@@ -85,6 +85,7 @@ struct dit_ctx {
   dit_model_kind kind = DIT_MODEL_Z_IMAGE;
   std::string last_error;
   int preview_interval = 0;
+  bool sm8650_cpu_vae = true;
 };
 
 namespace {
@@ -192,16 +193,18 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
   if (params->params_backend && params->params_backend[0])
     sd_params.params_backend = params->params_backend;
 
+  const char *vae_backend = std::getenv("LOCAL_DREAM_SM8650_VAE");
+  // Only an explicit HTP0 selection enables the experimental full DSP decode.
+  const bool cpu_vae = !vae_backend || std::strcmp(vae_backend, "HTP0") != 0;
   if (sm8650_compat) {
-    // Isolate VAE convolution from the unvalidated v75 direct-conv path.
-    // DiT and the text encoder retain the Hexagon backend.
-    sd_params.backend = "all=HTP0,vae=CPU";
-    sd_params.vae_conv_direct = false;
-    sd::experimental_trace::emit("stage=backend_selection diffusion=HTP0 te=HTP0 vae=CPU vae_direct=0");
+    sd_params.backend = cpu_vae ? "all=HTP0,vae=CPU" : "all=HTP0";
+    sd_params.vae_conv_direct = !cpu_vae;
+    sd::experimental_trace::emit("stage=backend_selection diffusion=HTP0 te=HTP0 vae=%s vae_direct=%d",cpu_vae?"CPU":"HTP0",int(!cpu_vae));
   }
 
   auto *ctx = new dit_ctx();
   ctx->kind = params->kind;
+  ctx->sm8650_cpu_vae = cpu_vae;
   diagnostic_stage("model_initialization");
   try {
     ctx->sd = new_sd_ctx(&sd_params);
@@ -306,9 +309,8 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
   }
 
   if (std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
-    // At the fixed 512px validation size CPU decode fits one frame; avoid
-    // introducing the tiling merge as another variable in this comparison.
-    gen.vae_tiling_params.enabled = false;
+    // Preserve one-frame CPU decode; bound memory on the HTP test path.
+    gen.vae_tiling_params.enabled = !ctx->sm8650_cpu_vae;
     gen.vae_tiling_params.tile_size_x = 64;
     gen.vae_tiling_params.tile_size_y = 64;
     gen.vae_tiling_params.target_overlap = 0.25f;
@@ -338,7 +340,7 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
   sd_image_t *images = nullptr;
   int image_count = 0;
   sd::experimental_trace::reset();
-  sd::experimental_trace::emit("stage=generation_begin build=v0.7 seed=%lld cfg=%g width=%d height=%d vae=CPU vae_direct=0", (long long)params->seed, params->cfg_scale, params->width, params->height);
+  sd::experimental_trace::emit("stage=generation_begin build=v0.8 seed=%lld cfg=%g width=%d height=%d vae=%s vae_direct=%d tiling=%d", (long long)params->seed, params->cfg_scale, params->width, params->height,ctx->sm8650_cpu_vae?"CPU":"HTP0",int(!ctx->sm8650_cpu_vae),int(gen.vae_tiling_params.enabled));
   diagnostic_stage("text_encoding_and_lazy_loading");
   bool ok = false;
   try {

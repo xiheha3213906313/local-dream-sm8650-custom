@@ -87,7 +87,7 @@ object Sm8650Diagnostics {
                             currentCoroutineContext().ensureActive()
                             check(System.nanoTime() - probeStarted < TimeUnit.MINUTES.toNanos(3)) { "$kind diagnostic timed out after 3 minutes" }
                         }
-                        combined += "\nHTP VAE probe (generation uses CPU VAE): ${kind}ExitCode=${probeChild.exitValue()}\n"
+                        combined += "\nHTP VAE probe (generation decoder is selected in Settings): ${kind}ExitCode=${probeChild.exitValue()}\n"
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

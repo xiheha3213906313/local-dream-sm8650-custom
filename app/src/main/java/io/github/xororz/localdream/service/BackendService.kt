@@ -167,6 +167,8 @@ class BackendService : Service() {
         val width: Int,
         val height: Int,
         val listenOnAll: Boolean,
+        // Include decode selection so re-entry cannot reuse the other VAE backend.
+        val sm8650CpuVae: Boolean,
     )
 
     override fun onCreate() {
@@ -234,7 +236,10 @@ class BackendService : Service() {
         val listenOnAll = getSharedPreferences("app_prefs", MODE_PRIVATE)
             .getBoolean("listen_on_all_addresses", false) ||
             RemoteHostService.isRunning.value
-        return BackendConfig(modelId, backendType, width, height, listenOnAll)
+        val cpuVae = isDitBackend(backendType) && DitEngine.isExperimentalDevice() &&
+            getSharedPreferences("app_prefs", MODE_PRIVATE)
+                .getBoolean(DitEngine.SM8650_CPU_VAE_KEY, DitEngine.SM8650_CPU_VAE_DEFAULT)
+        return BackendConfig(modelId, backendType, width, height, listenOnAll, cpuVae)
     }
 
     // Declares the desired backend and converges to it. Cancels any pending
@@ -644,6 +649,9 @@ class BackendService : Service() {
             env["LD_LIBRARY_PATH"] = systemLibPathsStr
             env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
             if (ditEngineDir != null && DitEngine.isExperimentalDevice()) {
+                val vaeBackend = if (config.sm8650CpuVae) "CPU" else "HTP0"
+                env["LOCAL_DREAM_SM8650_VAE"] = vaeBackend
+                Log.i(TAG, "FP8_DIAG vae_backend=$vaeBackend cpu_decode=${config.sm8650CpuVae}")
                 env["LOCAL_DREAM_DIT_PROFILE"] = "sm8650_fp8_compat"
                 env["LOCAL_DREAM_DIAGNOSTIC_PATH"] = File(filesDir, "sm8650-generation-trace.log").absolutePath
                 env["GGML_HEXAGON_FP8_COMPAT"] = "1"

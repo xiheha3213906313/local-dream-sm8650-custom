@@ -549,4 +549,6 @@
     <string name="sm8650_diagnostic_previous">查看上次诊断日志</string>
     <string name="sm8650_diagnostic_not_found">暂无诊断日志，请先运行适配诊断。</string>
     <string name="sm8650_diagnostic_read_failed">无法读取上次诊断日志。</string>
+    <string name="sm8650_cpu_vae">CPU 解码</string>
+    <string name="sm8650_cpu_vae_hint">SM8650 DiT：开启使用 CPU 解码，关闭试用 DSP 解码。下次进入模型时生效，DiT 采样仍使用 DSP。</string>
 </resources>

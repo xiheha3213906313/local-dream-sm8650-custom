@@ -560,4 +560,6 @@
     <string name="sm8650_diagnostic_previous">View last diagnostic log</string>
     <string name="sm8650_diagnostic_not_found">No previous diagnostic log found. Run diagnostics first.</string>
     <string name="sm8650_diagnostic_read_failed">Could not read the previous diagnostic log.</string>
+    <string name="sm8650_cpu_vae">CPU decoding</string>
+    <string name="sm8650_cpu_vae_hint">SM8650 DiT: on uses CPU VAE; off tries DSP VAE. Takes effect when you next open the model. DiT sampling continues on DSP.</string>
 </resources>

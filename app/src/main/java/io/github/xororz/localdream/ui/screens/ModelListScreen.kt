@@ -1417,6 +1417,11 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                                         preferences.getBoolean("show_diffusion_process", false),
                                     )
                                 }
+                                var cpuVae by remember {
+                                    mutableStateOf(
+                                        preferences.getBoolean(DitEngine.SM8650_CPU_VAE_KEY, DitEngine.SM8650_CPU_VAE_DEFAULT),
+                                    )
+                                }
                                 var captureLogs by remember {
                                     mutableStateOf(
                                         preferences.getBoolean("enable_log_capture", false),
@@ -1518,6 +1523,20 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                                     )
                                 }
 
+                                if (DitEngine.isExperimentalDevice()) {
+                                    SwitchSettingRow(
+                                        title = stringResource(R.string.sm8650_cpu_vae),
+                                        description = stringResource(R.string.sm8650_cpu_vae_hint),
+                                        checked = cpuVae,
+                                        onCheckedChange = {
+                                            cpuVae = it
+                                            preferences.edit { putBoolean(DitEngine.SM8650_CPU_VAE_KEY, it) }
+                                        },
+                                    )
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                    )
+                                }
                                 SwitchSettingRow(
                                     title = "img2img",
                                     description = stringResource(R.string.img2img_hint),
