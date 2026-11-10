@@ -35,15 +35,14 @@ android {
         applicationId = "io.github.xororz.localdream"
         if (sm8650Compat) {
             applicationIdSuffix = ".sm8650"
-            versionNameSuffix = "-sm8650-experimental"
+            versionNameSuffix = "-sm8650"
         }
-        buildConfigField("boolean", "SM8650_COMPAT", sm8650Compat.toString())
         manifestPlaceholders["localDreamLabel"] = if (sm8650Compat) "Local Dream SM8650" else "@string/app_name"
         minSdk = 28
 //        minSdk = 31
         targetSdk = 36
-        versionCode = 82
-        versionName = "3.0.0-alpha.7.8"
+        versionCode = 83
+        versionName = "3.0.0-alpha.7.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

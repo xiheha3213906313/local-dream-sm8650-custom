@@ -53,7 +53,6 @@ object DitModelImport {
         name: String,
         kind: DitImportKind,
         sources: Map<DitImportComponent, DitImportSource>,
-        experimental: Boolean,
         ignoreCase: Boolean = false,
         isReserved: (String) -> Boolean = { false },
         checkCancelled: () -> Unit = {},
@@ -61,7 +60,6 @@ object DitModelImport {
     ): File {
         val id = modelId(name)
         require(!isReserved(id)) { "This name is reserved for a built-in model" }
-        require(!experimental || kind == DitImportKind.KLEIN) { "SM8650 currently supports Klein 4B imports only" }
         val required = requiredComponents(kind)
         require(required.all { it in sources }) { "Select all required model components" }
         check(root.isDirectory || root.mkdirs()) { "Cannot create model storage directory" }
@@ -101,12 +99,10 @@ object DitModelImport {
                 when (component) {
                     DitImportComponent.DIFFUSION -> {
                         if (isGguf(output)) {
-                            require(!experimental) { "For SM8650, select the Klein 4B FP8 safetensors diffusion model" }
                             validateGguf(output)
                             check(output.renameTo(File(staging, "dit.gguf"))) { "Cannot store GGUF diffusion model" }
                         } else {
-                            val header = validateSafetensors(output)
-                            if (experimental) validateKlein4b(header)
+                            validateSafetensors(output)
                         }
                     }
 
@@ -188,17 +184,5 @@ object DitModelImport {
             require(Math.multiplyExact(elements, itemBytes) == offsets.getLong(1) - offsets.getLong(0)) { "${file.name}: tensor size mismatch for $key" }
         }
         header
-    }
-
-    internal fun validateKlein4b(header: JSONObject) {
-        val keys = header.keys().asSequence().toList()
-        val textInput = keys.firstOrNull { it.endsWith("txt_in.weight") }?.let { header.getJSONObject(it).getJSONArray("shape") }
-        require(textInput != null && textInput.length() == 2 && textInput.getInt(0) == 3072 && textInput.getInt(1) == 7680) {
-            "SM8650 import requires Klein 4B weights (3072 hidden channels, 7680 text channels)"
-        }
-        require(keys.any { it.endsWith("single_blocks.19.linear1.weight") } && keys.none { it.contains("single_blocks.20.") }) {
-            "Select the Klein 4B diffusion model, not another FLUX variant"
-        }
-        require(keys.any { header.optJSONObject(it)?.optString("dtype") == "F8_E4M3" }) { "Select FP8 E4M3 weights for the SM8650 experimental backend" }
     }
 }

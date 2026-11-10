@@ -47,7 +47,7 @@ class DitModelImportTest {
     @Test
     fun completedImportHasStandardNamesMarkersAndDiTDefaults() = inStorage { root ->
         var done = 0L
-        val dir = DitModelImport.importModel(root, "my Klein", DitImportKind.KLEIN, components(), false, onProgress = { value, _ -> done = value })
+        val dir = DitModelImport.importModel(root, "my Klein", DitImportKind.KLEIN, components(), onProgress = { value, _ -> done = value })
         assertEquals("myKlein", dir.name)
         assertTrue(DitModelImport.isComplete(dir, DitImportKind.KLEIN))
         assertTrue(File(dir, DitModelImport.IMPORT_MARKER).isFile)
@@ -61,8 +61,8 @@ class DitModelImportTest {
     fun duplicateOrReservedNameNeverReplacesExistingData() = inStorage { root ->
         val dir = File(root, "existing").apply { mkdir() }
         File(dir, "keep").writeText("original")
-        expectFailure { DitModelImport.importModel(root, "EXISTING", DitImportKind.KLEIN, components(), false, ignoreCase = true) }
-        expectFailure { DitModelImport.importModel(root, "builtin", DitImportKind.KLEIN, components(), false, isReserved = { it == "builtin" }) }
+        expectFailure { DitModelImport.importModel(root, "EXISTING", DitImportKind.KLEIN, components(), ignoreCase = true) }
+        expectFailure { DitModelImport.importModel(root, "builtin", DitImportKind.KLEIN, components(), isReserved = { it == "builtin" }) }
         assertEquals("original", File(dir, "keep").readText())
         assertEquals(1, root.list()!!.size)
     }
@@ -75,9 +75,10 @@ class DitModelImportTest {
     }
 
     @Test
-    fun missingComponentsAndUnsupportedExperimentalKindAreRejected() = inStorage { root ->
-        expectFailure { DitModelImport.importModel(root, "missing", DitImportKind.KLEIN, emptyMap(), false) }
-        expectFailure { DitModelImport.importModel(root, "qwen", DitImportKind.QWEN21, components(), true) }
+    fun missingComponentsAreRejectedForEveryModelFamily() = inStorage { root ->
+        for (kind in DitImportKind.entries) {
+            expectFailure { DitModelImport.importModel(root, kind.backend, kind, emptyMap()) }
+        }
         assertTrue(root.list()!!.isEmpty())
     }
 
@@ -85,10 +86,10 @@ class DitModelImportTest {
     fun ioFailureAndCancellationRemoveStagingAndNeverPublishModel() = inStorage { root ->
         val bad = components().toMutableMap()
         bad[DitImportComponent.VAE] = DitImportSource(-1) { throw IOException("provider disconnected") }
-        expectFailure { DitModelImport.importModel(root, "broken", DitImportKind.KLEIN, bad, false) }
+        expectFailure { DitModelImport.importModel(root, "broken", DitImportKind.KLEIN, bad) }
         var calls = 0
         expectFailure {
-            DitModelImport.importModel(root, "cancelled", DitImportKind.KLEIN, components(), false, checkCancelled = {
+            DitModelImport.importModel(root, "cancelled", DitImportKind.KLEIN, components(), checkCancelled = {
                 if (++calls == 3) throw CancellationException("cancel")
             })
         }
@@ -100,43 +101,48 @@ class DitModelImportTest {
         for (component in DitImportComponent.entries.filter { it != DitImportComponent.VISION }) {
             val bad = components().toMutableMap()
             bad[component] = source("<html>download failed</html>".toByteArray())
-            expectFailure { DitModelImport.importModel(root, "bad", DitImportKind.KLEIN, bad, false) }
+            expectFailure { DitModelImport.importModel(root, "bad", DitImportKind.KLEIN, bad) }
         }
         val truncated = components().toMutableMap()
         truncated[DitImportComponent.DIFFUSION] = source(safetensors("img_in.weight").dropLast(1).toByteArray())
-        expectFailure { DitModelImport.importModel(root, "truncated", DitImportKind.KLEIN, truncated, false) }
+        expectFailure { DitModelImport.importModel(root, "truncated", DitImportKind.KLEIN, truncated) }
         val wrongVae = components().toMutableMap()
         wrongVae[DitImportComponent.VAE] = source(safetensors("img_in.weight"))
-        expectFailure { DitModelImport.importModel(root, "wrongvae", DitImportKind.KLEIN, wrongVae, false) }
+        expectFailure { DitModelImport.importModel(root, "wrongvae", DitImportKind.KLEIN, wrongVae) }
         val wrongTokenizer = components().toMutableMap()
         wrongTokenizer[DitImportComponent.TOKENIZER] = source("{\"tokenizer_class\":\"Qwen\"}".toByteArray())
-        expectFailure { DitModelImport.importModel(root, "wrongtokenizer", DitImportKind.KLEIN, wrongTokenizer, false) }
+        expectFailure { DitModelImport.importModel(root, "wrongtokenizer", DitImportKind.KLEIN, wrongTokenizer) }
         assertTrue(root.list()!!.isEmpty())
     }
 
     @Test
-    fun ggufDiffusionIsNamedCorrectlyOnNativeDevices() = inStorage { root ->
-        val gguf = components().toMutableMap()
-        gguf[DitImportComponent.DIFFUSION] = gguf.getValue(DitImportComponent.TEXT_ENCODER)
-        val dir = DitModelImport.importModel(root, "quantized", DitImportKind.KLEIN, gguf, false)
-        assertTrue(File(dir, "dit.gguf").isFile)
-        assertFalse(File(dir, "dit.safetensors").exists())
-        expectFailure { DitModelImport.importModel(root, "unsupported", DitImportKind.KLEIN, gguf, true) }
-        assertFalse(File(root, "unsupported").exists())
+    fun ggufDiffusionIsNamedCorrectlyForEveryModelFamily() = inStorage { root ->
+        for (kind in DitImportKind.entries) {
+            val gguf = components().toMutableMap()
+            gguf[DitImportComponent.DIFFUSION] = gguf.getValue(DitImportComponent.TEXT_ENCODER)
+            if (kind.needsVision) gguf[DitImportComponent.VISION] = gguf.getValue(DitImportComponent.TEXT_ENCODER)
+            val dir = DitModelImport.importModel(root, "quantized-${kind.backend}", kind, gguf)
+            assertTrue(File(dir, "dit.gguf").isFile)
+            assertFalse(File(dir, "dit.safetensors").exists())
+            assertTrue(DitModelImport.isComplete(dir, kind))
+        }
     }
 
     @Test
-    fun klein4bHeaderRequiresItsActualDimensionsDepthAndFp8Type() {
-        val header = JSONObject()
-            .put("txt_in.weight", tensor(listOf(3072, 7680)))
-            .put("single_blocks.19.linear1.weight", tensor().put("dtype", "F8_E4M3"))
-        DitModelImport.validateKlein4b(header)
-        val wrongDimensions = JSONObject(header.toString()).put("txt_in.weight", tensor(listOf(4096, 7680)))
-        expectFailure { DitModelImport.validateKlein4b(wrongDimensions) }
-        val nineB = JSONObject(header.toString()).put("single_blocks.20.linear1.weight", tensor())
-        expectFailure { DitModelImport.validateKlein4b(nineB) }
-        val fp16 = JSONObject(header.toString()).put("single_blocks.19.linear1.weight", tensor())
-        expectFailure { DitModelImport.validateKlein4b(fp16) }
+    fun safetensorsImportHasNoKleinDimensionOrFp8OnlyGate() = inStorage { root ->
+        for (kind in DitImportKind.entries) {
+            val sources = components().toMutableMap()
+            if (kind.needsVision) {
+                expectFailure { DitModelImport.importModel(root, "missing-vision-${kind.backend}", kind, sources) }
+                sources[DitImportComponent.VISION] = sources.getValue(DitImportComponent.TEXT_ENCODER)
+            }
+            // The synthetic F32 header intentionally has none of Klein 4B's
+            // architecture-specific keys. File integrity remains validated.
+            val dir = DitModelImport.importModel(root, "original-${kind.backend}", kind, sources)
+            assertTrue(DitModelImport.isComplete(dir, kind))
+            assertTrue(File(dir, "dit.safetensors").isFile)
+            assertTrue(File(dir, kind.marker).isFile)
+        }
     }
 
     private fun expectFailure(block: () -> Unit) {

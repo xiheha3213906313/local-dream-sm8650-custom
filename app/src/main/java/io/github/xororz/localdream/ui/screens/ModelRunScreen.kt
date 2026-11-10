@@ -249,7 +249,7 @@ fun ModelRunScreen(
     } else {
         remember(modelRepository.models) { modelRepository.models.find { it.id == modelId } }
     }
-    val sm8650Profile = !isRemote && DitEngine.isExperimentalDevice() && model?.ditKind == "klein"
+    val sm8650Profile = !isRemote && DitEngine.isSm8650Device() && model?.isDit == true
     val supportsReferenceEditing = model?.ditKind == "klein" || model?.ditKind == "qwen21"
     LaunchedEffect(Unit) {
         if (!isRemote) {

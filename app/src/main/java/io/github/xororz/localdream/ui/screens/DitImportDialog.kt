@@ -61,7 +61,7 @@ private fun componentLabel(component: DitImportComponent): String = stringResour
 )
 
 private fun kindLabel(kind: DitImportKind): String = when (kind) {
-    DitImportKind.KLEIN -> if (DitEngine.isExperimentalDevice()) "FLUX.2 Klein 4B" else "FLUX.2 Klein"
+    DitImportKind.KLEIN -> "FLUX.2 Klein / FLUX.3"
     DitImportKind.ZIMAGE -> "Z-Image Turbo"
     DitImportKind.QWEN21 -> "Qwen Image 2.1"
     DitImportKind.KREA2 -> "Krea 2 Turbo"
@@ -71,7 +71,7 @@ private fun kindLabel(kind: DitImportKind): String = when (kind) {
 @Composable
 fun DitImportDialog(context: Context, onDismiss: () -> Unit, onImported: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val kinds = remember { DitImportKind.entries.filter { DitEngine.supportsModel(it.backend) } }
+    val kinds = remember { DitImportKind.entries.toList() }
     var kind by remember { mutableStateOf(kinds.first()) }
     var name by remember { mutableStateOf("") }
     val files = remember { mutableStateMapOf<DitImportComponent, SelectedDitFile>() }
@@ -124,7 +124,7 @@ fun DitImportDialog(context: Context, onDismiss: () -> Unit, onImported: () -> U
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(stringResource(if (DitEngine.isExperimentalDevice()) R.string.dit_import_hint_sm8650 else R.string.dit_import_hint))
+                Text(stringResource(R.string.dit_import_hint))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -203,7 +203,6 @@ fun DitImportDialog(context: Context, onDismiss: () -> Unit, onImported: () -> U
                                     name = name,
                                     kind = kind,
                                     sources = sources,
-                                    experimental = DitEngine.isExperimentalDevice(),
                                     ignoreCase = ModelStorage.ignoresCase(context),
                                     isReserved = { ModelRepository.isReservedModelId(it, ModelStorage.ignoresCase(context)) },
                                     checkCancelled = { coroutine.ensureActive() },

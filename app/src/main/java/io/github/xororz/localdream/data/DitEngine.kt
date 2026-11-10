@@ -2,7 +2,6 @@ package io.github.xororz.localdream.data
 
 import android.content.Context
 import android.os.Build
-import io.github.xororz.localdream.BuildConfig
 import java.io.File
 
 /**
@@ -20,28 +19,29 @@ object DitEngine {
     // DSP decode completed successfully on the target Xiaomi 14; retain CPU as an explicit fallback.
     const val SM8650_CPU_VAE_DEFAULT = false
 
-    // The optimized FP8 path has been validated from SM8750 onward. Comparing
-    // the numeric part also admits newer SM-series chips without maintaining a
-    // hard-coded allowlist; suffixes such as SM8750P naturally map to 8750.
-    private const val FIRST_SUPPORTED_PART_NUMBER = 8750
-
-    internal fun isExperimentalSoc(soc: String, apiLevel: Int, enabled: Boolean): Boolean = enabled && apiLevel >= 31 && soc.uppercase() == "SM8650"
-
-    fun isExperimentalDevice(): Boolean = Build.VERSION.SDK_INT >= 31 &&
-        isExperimentalSoc(Build.SOC_MODEL, Build.VERSION.SDK_INT, BuildConfig.SM8650_COMPAT)
-
-    fun supportsModel(ditKind: String): Boolean = isNativeDevice() ||
-        (isExperimentalDevice() && ditKind == "klein")
-
-    fun isSupportedDevice(): Boolean = isNativeDevice() || isExperimentalDevice()
-
-    fun isNativeDevice(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
-        val soc = Build.SOC_MODEL.uppercase()
-        if (!soc.startsWith("SM")) return false
-        val partNumber = soc.dropWhile { !it.isDigit() }.takeWhile { it.isDigit() }.toIntOrNull()
-        return partNumber != null && partNumber >= FIRST_SUPPORTED_PART_NUMBER
+    private fun partNumber(soc: String): Int? {
+        val normalized = soc.trim().uppercase()
+        if (!normalized.startsWith("SM")) return null
+        return normalized.drop(2).takeWhile { it.isDigit() }.toIntOrNull()
     }
+
+    internal fun isSm8650Soc(soc: String, apiLevel: Int): Boolean = apiLevel >= 31 && partNumber(soc) == 8650
+
+    internal fun isSupportedSoc(soc: String, apiLevel: Int): Boolean {
+        if (apiLevel < 31) return false
+        val part = partNumber(soc) ?: return false
+        // Add 8 Gen 3 explicitly; do not accidentally admit other lower-numbered
+        // chips whose HTP architecture has not been covered by this backend.
+        return part == 8650 || part >= 8750
+    }
+
+    // v75 still needs FP8 -> F16 HMX compatibility even though it is now a
+    // supported device. Keep that hardware choice separate from eligibility.
+    fun isSm8650Device(): Boolean = Build.VERSION.SDK_INT >= 31 &&
+        isSm8650Soc(Build.SOC_MODEL, Build.VERSION.SDK_INT)
+
+    fun isSupportedDevice(): Boolean = Build.VERSION.SDK_INT >= 31 &&
+        isSupportedSoc(Build.SOC_MODEL, Build.VERSION.SDK_INT)
 
     /** Directory holding the engine, i.e. the app's native library directory. */
     fun dir(context: Context): File = File(context.applicationInfo.nativeLibraryDir)

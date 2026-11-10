@@ -9,18 +9,21 @@ _Also supports CPU/GPU inference_
 
 </div>
 
-## Snapdragon 8 Gen 3 experimental branch
+## Snapdragon 8 Gen 3 support
 
-This branch adds experimental FP8-weight compatibility for **Xiaomi 14 / SM8650 / 12 GB**.
-Klein 4B is the first validation target (512×512, 4 steps, text-to-image). FP8 weights
-are decoded in bounded chunks on HVX and computed using v75 FP16 HMX kernels.
+**SM8650 / SM8650P are included in the supported DiT device list.** All existing
+model entries are available: Z-Image Turbo, Klein 4B/9B, FLUX.3, Qwen Image 2.1
+and Turbo, and Krea 2 Turbo. Safetensors and GGUF import uses the common file
+checks, without a Klein-only or FP8-only processor gate.
 
-**Hardware validation is pending.** Cross-compilation and host tests have passed;
-this is not a claim of successful generation or measured performance on a Xiaomi 14.
-Qwen Image 2.1 remains disabled until the Klein device tests pass.
+Xiaomi 14 Klein 4B 512px DSP generation has completed successfully. Other model
+families are enabled for loading and use, but have not each been validated on
+this phone. v75 still uses bounded FP8-to-FP16 HMX compatibility and segmented
+memory management, with DSP VAE by default and an optional CPU fallback.
+See [v0.10 device/model changes and validation limits](docs/sm8650-v0.10.md).
 
 See [build instructions and phone test procedure](docs/sm8650-fp8.md).
-The [v0.6 VAE isolation and trace notes](docs/sm8650-v0.6.md) describe the current SM8650 CPU VAE compatibility path; DiT remains on HTP0.
+The [v0.6 VAE isolation and trace notes](docs/sm8650-v0.6.md) describe the earlier CPU VAE isolation stage and numerical tracing.
 
 SM8650 v0.7：保留 CPU 解码，修复 v75 FP16 GroupNorm 累计格式并增加数值对照，见 [修复与复测说明](docs/sm8650-v0.7.md)。
 
@@ -32,7 +35,7 @@ The [v0.4 repair notes](docs/sm8650-v0.4.md) cover the reproduced v75 conversion
 Local model import is available in the DiT tab. See [Klein 4B download links and import steps](docs/klein-downloads.md).
 For diagnostic log export and recovery, see [v0.3 instructions](docs/log-export.md).
 The application is named **Local Dream SM8650**, with a separate package ID.
-The experimental APK reuses the pinned official alpha.7 core/QNN runtime and replaces
+The SM8650 APK reuses the pinned official alpha.7 core/QNN runtime and replaces
 the DiT engine with the locally built engine; full core-source compilation is a
 separate build path. Original attribution and licenses are preserved.
 

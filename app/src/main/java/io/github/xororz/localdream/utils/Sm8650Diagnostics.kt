@@ -19,7 +19,7 @@ object Sm8650Diagnostics {
         private set
 
     suspend fun run(context: Context): String = withContext(Dispatchers.IO) {
-        check(DitEngine.isExperimentalDevice()) { "Requires SM8650 experimental build" }
+        check(DitEngine.isSm8650Device()) { "Requires an SM8650 device" }
         synchronized(this@Sm8650Diagnostics) {
             check(!isRunning) { "Diagnostic already running" }
             check(

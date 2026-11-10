@@ -236,7 +236,7 @@ class BackendService : Service() {
         val listenOnAll = getSharedPreferences("app_prefs", MODE_PRIVATE)
             .getBoolean("listen_on_all_addresses", false) ||
             RemoteHostService.isRunning.value
-        val cpuVae = isDitBackend(backendType) && DitEngine.isExperimentalDevice() &&
+        val cpuVae = isDitBackend(backendType) && DitEngine.isSm8650Device() &&
             getSharedPreferences("app_prefs", MODE_PRIVATE)
                 .getBoolean(DitEngine.SM8650_CPU_VAE_KEY, DitEngine.SM8650_CPU_VAE_DEFAULT)
         return BackendConfig(modelId, backendType, width, height, listenOnAll, cpuVae)
@@ -533,10 +533,7 @@ class BackendService : Service() {
                     "8081",
                 )
             }
-            if (isDitBackend(backendType) && DitEngine.isExperimentalDevice()) {
-                if (!DitEngine.supportsModel(backendType)) {
-                    throw IllegalArgumentException("SM8650 experimental build currently supports Klein 4B only")
-                }
+            if (isDitBackend(backendType) && DitEngine.isSm8650Device()) {
                 check(!Sm8650Diagnostics.isRunning) { "SM8650 diagnostics are running" }
                 command.addAll(listOf("--log_level", "info"))
                 Log.i(TAG, "FP8_DIAG profile=sm8650_fp8_compat soc=${android.os.Build.SOC_MODEL}")
@@ -648,7 +645,7 @@ class BackendService : Service() {
             val systemLibPathsStr = systemLibPaths.joinToString(":")
             env["LD_LIBRARY_PATH"] = systemLibPathsStr
             env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
-            if (ditEngineDir != null && DitEngine.isExperimentalDevice()) {
+            if (ditEngineDir != null && DitEngine.isSm8650Device()) {
                 val vaeBackend = if (config.sm8650CpuVae) "CPU" else "HTP0"
                 env["LOCAL_DREAM_SM8650_VAE"] = vaeBackend
                 Log.i(TAG, "FP8_DIAG vae_backend=$vaeBackend cpu_decode=${config.sm8650CpuVae}")

@@ -575,18 +575,17 @@ class ModelRepository private constructor(private val context: Context) {
                 val krea2TurboFile = File(dir, "KREA_2_TURBO")
 
                 when {
-                    zImageFile.exists() && DitEngine.supportsModel("zimage") ->
+                    zImageFile.exists() && DitEngine.isSupportedDevice() ->
                         customModels.add(createCustomModel(dir, isNpu = true, ditKind = "zimage"))
 
-                    kleinFile.exists() && DitEngine.supportsModel("klein") &&
-                        (DitEngine.isNativeDevice() || File(dir, DitModelImport.IMPORT_MARKER).isFile) &&
+                    kleinFile.exists() && DitEngine.isSupportedDevice() &&
                         DitModelImport.isComplete(dir, DitImportKind.KLEIN) ->
                         customModels.add(createCustomModel(dir, isNpu = true, ditKind = "klein"))
 
-                    qwenImage21File.exists() && DitEngine.supportsModel("qwen21") ->
+                    qwenImage21File.exists() && DitEngine.isSupportedDevice() ->
                         customModels.add(createCustomModel(dir, isNpu = true, ditKind = "qwen21"))
 
-                    krea2TurboFile.exists() && DitEngine.supportsModel("krea2turbo") ->
+                    krea2TurboFile.exists() && DitEngine.isSupportedDevice() ->
                         customModels.add(createCustomModel(dir, isNpu = true, ditKind = "krea2turbo"))
 
                     animaFile.exists() ->
@@ -656,10 +655,7 @@ class ModelRepository private constructor(private val context: Context) {
         val customModels = scanCustomModels()
 
         val predefinedModels = mutableListOf<Model>().apply {
-            if (DitEngine.isExperimentalDevice()) {
-                add(createFlux2KleinModel())
-            }
-            if (DitEngine.isNativeDevice()) {
+            if (DitEngine.isSupportedDevice()) {
                 add(createZImageTurboModel())
                 add(createFlux2KleinModel())
                 add(createFlux2KleinModel(nineB = true))
@@ -732,19 +728,13 @@ class ModelRepository private constructor(private val context: Context) {
         val packageFiles = if (nineB) Model.KLEIN_9B_PACKAGE_FILES else Model.KLEIN_PACKAGE_FILES
         return Model(
             id = id,
-            name = if (nineB) {
-                "FLUX.2 Klein 9B"
-            } else if (DitEngine.isExperimentalDevice()) {
-                "FLUX.2 Klein 4B (SM8650 experimental)"
-            } else {
-                "FLUX.2 Klein 4B"
-            },
+            name = if (nineB) "FLUX.2 Klein 9B" else "FLUX.2 Klein 4B",
             description = context.getString(
                 if (nineB) R.string.flux2_klein_9b_description else R.string.flux2_klein_description,
             ),
             baseUrl = baseUrl,
             packageFiles = packageFiles,
-            generationSize = if (DitEngine.isExperimentalDevice()) 512 else 1024,
+            generationSize = 1024,
             approximateSize = if (nineB) "10.8GB" else "6.7GB",
             isDownloaded = Model.isDitPackageDownloaded(
                 context,
@@ -863,7 +853,7 @@ class ModelRepository private constructor(private val context: Context) {
         )
     }
 
-    private fun isSdxlCapableSoc(soc: String): Boolean = soc in setOf("SM8750", "SM8750P", "SM8850", "SM8850P", "SM8845", "SM8950", "SM8975", "SM8650")
+    private fun isSdxlCapableSoc(soc: String): Boolean = soc in setOf("SM8750", "SM8750P", "SM8850", "SM8850P", "SM8845", "SM8950", "SM8975", "SM8650", "SM8650P")
 
     private fun createCyberRealisticV10Model(): Model {
         val id = "cyber_realistic_v10"

@@ -1187,7 +1187,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                     contentPadding = PaddingValues(vertical = 16.dp),
                 ) {
-                    if (DitEngine.isExperimentalDevice()) {
+                    if (DitEngine.isSm8650Device()) {
                         item {
                             OutlinedButton(
                                 enabled = !diagnosticRunning,
@@ -1523,7 +1523,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                                     )
                                 }
 
-                                if (DitEngine.isExperimentalDevice()) {
+                                if (DitEngine.isSm8650Device()) {
                                     SwitchSettingRow(
                                         title = stringResource(R.string.sm8650_cpu_vae),
                                         description = stringResource(R.string.sm8650_cpu_vae_hint),

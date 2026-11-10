@@ -15,6 +15,7 @@ static void *log_data,*progress_data;
 static unsigned calls,steps_seen;
 static bool expect_init,expect_mask,expect_refs,expect_cpu,expect_tiling;
 static int expected_width,expected_height,expected_steps;
+static dit_model_kind expected_kind;
 extern "C" {
 void sd_ctx_params_init(sd_ctx_params_t *p){*p={};}
 void sd_img_gen_params_init(sd_img_gen_params_t *p){*p={};}
@@ -23,6 +24,8 @@ sd_ctx_t *new_sd_ctx(const sd_ctx_params_t *p){
     assert(p->vae_conv_direct==!expect_cpu);
     assert(std::string(p->max_vram)=="HTP0=2.0");
     assert(p->disable_prefetch && !p->disable_segmented_compute);
+    const bool vision=expected_kind==DIT_MODEL_QWEN_IMAGE_2_1 || expected_kind==DIT_MODEL_KREA_2_TURBO;
+    assert(bool(p->llm_vision_path)==vision);
     return new sd_ctx_t;
 }
 void free_sd_ctx(sd_ctx_t *p){delete p;}
@@ -38,7 +41,7 @@ bool generate_image(sd_ctx_t*,const sd_img_gen_params_t *p,sd_image_t **images,i
     assert(p->sample_params.sample_steps==expected_steps);
     assert(bool(p->init_image.data)==expect_init && bool(p->mask_image.data)==expect_mask);
     assert((p->ref_images_count>0)==expect_refs);
-    if(expect_refs)assert(std::string(p->ref_image_args)=="preset=flux2");
+    if(expect_refs)assert(std::string(p->ref_image_args)==(expected_kind==DIT_MODEL_QWEN_IMAGE_2_1?"preset=qwen":expected_kind==DIT_MODEL_KREA_2_TURBO?"preset=krea2_ostris_edit":"preset=flux2"));
     assert(p->vae_tiling_params.enabled==expect_tiling);
     log_cb(SD_LOG_INFO,"generating image:",log_data);
     for(int i=1;i<=expected_steps;++i)progress_cb(i,expected_steps,.1f,progress_data);
@@ -72,18 +75,21 @@ int main(){
     setenv("LOCAL_DREAM_SM8650_PROFILE","sm8650_fp8_compat",1);
     const auto *api=dit_engine_get_api(DIT_ENGINE_ABI_VERSION);assert(api);
     api->set_log_callback(log_sink,nullptr);
-    dit_ctx_params p{};p.kind=DIT_MODEL_FLUX2_KLEIN;p.diffusion_model_path="dit";p.llm_path="llm";p.vae_path="vae";
-    for(bool cpu:{false,true}){
-        expect_cpu=cpu;
+    dit_ctx_params p{};p.diffusion_model_path="dit";p.llm_path="llm";p.vae_path="vae";
+    auto run_model=[&](dit_model_kind kind,bool cpu){
+        expected_kind=kind;p.kind=kind;expect_cpu=cpu;
+        p.llm_vision_path=kind==DIT_MODEL_QWEN_IMAGE_2_1 || kind==DIT_MODEL_KREA_2_TURBO?"vision":nullptr;
         if(cpu)setenv("LOCAL_DREAM_SM8650_VAE","CPU",1);else unsetenv("LOCAL_DREAM_SM8650_VAE");
         auto *ctx=api->create(&p);assert(ctx);
         run_case(api,ctx,512,768,8,0);
         run_case(api,ctx,1024,1024,30,0);
         run_case(api,ctx,768,512,12,1);
         run_case(api,ctx,512,512,6,2);
-        run_case(api,ctx,512,768,16,3);
+        if(kind!=DIT_MODEL_Z_IMAGE)run_case(api,ctx,512,768,16,3);
         api->destroy(ctx);
-    }
-    assert(calls==10);
-    puts("PASS: 10 production ABI requests, non-square/high-resolution, variable steps, img2img, masks, references, DSP default and CPU fallback");
+    };
+    for(auto kind:{DIT_MODEL_Z_IMAGE,DIT_MODEL_FLUX2_KLEIN,DIT_MODEL_QWEN_IMAGE_2_1,DIT_MODEL_KREA_2_TURBO})run_model(kind,false);
+    run_model(DIT_MODEL_FLUX2_KLEIN,true);
+    assert(calls==24);
+    puts("PASS: 24 production ABI requests, all 4 model kinds on SM8650, sizes/steps, images/masks/references, vision paths, DSP default and CPU fallback");
 }

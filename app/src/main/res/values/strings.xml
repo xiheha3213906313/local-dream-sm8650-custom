@@ -77,7 +77,7 @@
     <string name="got_it">Got It!</string>
     <string name="yes">Yes</string>
     <string name="about_app">Note</string>
-    <string name="must_read">This APP supports running stable diffusion image generation on CPU/GPU and some Qualcomm NPUs.\n\nSD1.5 models are supported on Snapdragon NPUs with Hexagon V68 architecture or newer.\n\nSDXL models are supported on Snapdragon 8 Gen 3 and newer devices.\n\nIf your chip is outside the above scope, you can only run on CPU/GPU.\n\nThis project is open source at https://github.com/xororz/local-dream where you can view the source code or submit issues\n\nDocumentation: https://ld.chino.icu</string>
+    <string name="must_read">This APP supports running stable diffusion image generation on CPU/GPU and some Qualcomm NPUs.\n\nSD1.5 models are supported on Snapdragon NPUs with Hexagon V68 architecture or newer.\n\nSDXL models are supported on Snapdragon 8 Gen 3 and newer devices.\n\nDiT model loading is available on Snapdragon 8 Gen 3 (SM8650/SM8650P) and supported SM8750+ devices.\n\nIf your chip is outside the above scope, you can only run on CPU/GPU.\n\nThis project is open source at https://github.com/xororz/local-dream where you can view the source code or submit issues\n\nDocumentation: https://ld.chino.icu</string>
     <string name="help">Help</string>
     <string name="more_options">More</string>
 
@@ -540,7 +540,6 @@
     <string name="sm8650_diagnostic_running">Testing the NPU. Keep this screen open; results will appear in the log export dialog.</string>
     <string name="dit_import_title">Import DiT model</string>
     <string name="dit_import_hint">Select the matching diffusion model, text encoder, VAE and tokenizer files. Files are copied into model storage and named automatically. Choose a new model name.</string>
-    <string name="dit_import_hint_sm8650">Xiaomi 14 experimental profile: Klein 4B FP8 only, 512×512, 4 steps. Select all four matching files. Original download filenames are accepted.</string>
     <string name="dit_import_diffusion">Diffusion model (.safetensors / .gguf)</string>
     <string name="dit_import_text_encoder">Text encoder (.gguf)</string>
     <string name="dit_import_vae">VAE (.safetensors)</string>
