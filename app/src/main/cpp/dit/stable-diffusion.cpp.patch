@@ -1,3 +1,67 @@
+diff --git a/src/core/ggml_runner.cpp b/src/core/ggml_runner.cpp
+index 3737dc7..b2624bf 100644
+--- a/src/core/ggml_runner.cpp
++++ b/src/core/ggml_runner.cpp
+@@ -1,4 +1,6 @@
+ #include <algorithm>
++#include <cstdlib>
++#include <cmath>
+ #include <map>
+ #include <utility>
+ 
+@@ -830,6 +832,11 @@ std::optional<Tensor<float>> GGMLRunner::execute_graph(ggml_cgraph* graph, int n
+         LOG_VERBOSE("%s using %zu segment%s", get_desc().c_str(),
+                     plan.segments.size(), plan.segments.size() == 1 ? "" : "s");
+     }
++    if (std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr && segments_changed) {
++        LOG_INFO("FP8_DIAG runner=%s segments=%zu segmented=%d budget_bytes=%zu prefetch=%d",
++                 get_desc().c_str(), plan.segments.size(), int(segmented), max_graph_vram_bytes,
++                 int(segmented && manager != nullptr && manager->prefetch_enabled()));
++    }
+     SegmentGraphBindings bindings(cut_cache_, plan, graph);
+     SegmentWeightPipeline weights(manager, runtime_backend, reinterpret_cast<uintptr_t>(this),
+                                   graph, plan, params_tensor_set_,
+@@ -951,5 +958,23 @@ std::optional<Tensor<float>> GGMLRunner::execute_graph(ggml_cgraph* graph, int n
+         logged_compute_bytes_ = std::move(peak_compute_bytes);
+         logged_segment_count_ = plan.segments.size();
+     }
++    if (std::getenv("LOCAL_DREAM_DIT_PROFILE") && output.has_value() && !output->empty()) {
++        size_t finite=0, nan=0, inf=0;
++        double sum2=0;
++        float lo=std::numeric_limits<float>::infinity(), hi=-lo;
++        for (int64_t i=0; i<output->numel(); ++i) {
++            float x=output->data()[i];
++            if (std::isnan(x)) { ++nan; continue; }
++            if (!std::isfinite(x)) { ++inf; continue; }
++            ++finite; lo=std::min(lo,x); hi=std::max(hi,x); sum2+=double(x)*x;
++        }
++        LOG_INFO("FP8_DIAG tensor runner=%s count=%lld finite=%zu nan=%zu inf=%zu min=%g max=%g rms=%g",
++                 get_desc().c_str(), (long long)output->numel(), finite, nan, inf, lo, hi,
++                 finite ? std::sqrt(sum2/finite) : 0.0);
++        if (nan || inf) {
++            LOG_ERROR("FP8_DIAG non-finite %s output; refusing to decode invalid image", get_desc().c_str());
++            return std::nullopt;
++        }
++    }
+     return output;
+ }
+diff --git a/src/core/util.cpp b/src/core/util.cpp
+index d735187..b85d808 100644
+--- a/src/core/util.cpp
++++ b/src/core/util.cpp
+@@ -554,7 +554,11 @@ void pretty_progress(int step, int steps, float time) {
+ void pretty_bytes_progress(int step, int steps, uint64_t bytes_processed, float elapsed_seconds) {
+     if (sd_progress_cb) {
+         float time = elapsed_seconds / (step + 1e-6f);
+-        sd_progress_cb(step, steps, time, sd_progress_cb_data);
++        // Byte/tensor loading counts are not completed diffusion steps.
++        if (std::getenv("LOCAL_DREAM_DIT_PROFILE"))
++            sd_progress_cb(0, 0, time, sd_progress_cb_data);
++        else
++            sd_progress_cb(step, steps, time, sd_progress_cb_data);
+         return;
+     }
+     if (step == 0) {
 diff --git a/src/model/common/block.hpp b/src/model/common/block.hpp
 index 8f585ba..6909a9c 100644
 --- a/src/model/common/block.hpp
@@ -100,24 +164,3 @@ index d05f88b..ea99966 100644
      ggml_tensor* try_forward_upscale(GGMLRunnerContext* ctx,
                                       ggml_tensor* x,
                                       int upscale_factor,
-diff --git a/src/core/ggml_runner.cpp b/src/core/ggml_runner.cpp
---- a/src/core/ggml_runner.cpp
-+++ b/src/core/ggml_runner.cpp
-@@ -1,4 +1,5 @@
- #include <algorithm>
-+#include <cstdlib>
- #include <map>
- #include <utility>
- 
-@@ -830,6 +831,11 @@
-         LOG_VERBOSE("%s using %zu segment%s", get_desc().c_str(),
-                     plan.segments.size(), plan.segments.size() == 1 ? "" : "s");
-     }
-+    if (std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr && segments_changed) {
-+        LOG_INFO("FP8_DIAG runner=%s segments=%zu segmented=%d budget_bytes=%zu prefetch=%d",
-+                 get_desc().c_str(), plan.segments.size(), int(segmented), max_graph_vram_bytes,
-+                 int(segmented && manager != nullptr && manager->prefetch_enabled()));
-+    }
-     SegmentGraphBindings bindings(cut_cache_, plan, graph);
-     SegmentWeightPipeline weights(manager, runtime_backend, reinterpret_cast<uintptr_t>(this),
-                                   graph, plan, params_tensor_set_,

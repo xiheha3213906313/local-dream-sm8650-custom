@@ -123,11 +123,14 @@ diff --git a/src/ggml-hexagon/htp/fp8-compat.h b/src/ggml-hexagon/htp/fp8-compat
 new file mode 100644
 --- /dev/null
 +++ b/src/ggml-hexagon/htp/fp8-compat.h
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,25 @@
 +#ifndef HTP_FP8_COMPAT_H
 +#define HTP_FP8_COMPAT_H
 +#include <stdint.h>
 +#include <stddef.h>
++// Power-of-two protection for the transient FP16 HMX result, restored in FP32.
++#define HTP_FP8_HMX_DOWNSCALE (1.0f / 256.0f)
++#define HTP_FP8_HMX_RESTORE 256.0f
 +static inline uint16_t htp_fp8_to_fp16_bits(uint8_t x) {
 +    const uint16_t sign = (uint16_t)(x & 0x80) << 8;
 +    unsigned e = (x >> 3) & 15, m = x & 7;
@@ -220,10 +223,12 @@ diff --git a/src/ggml-hexagon/htp/matmul-ops.c b/src/ggml-hexagon/htp/matmul-ops
          default:
              return -1;
      }
-@@ -3712,7 +3723,11 @@
+@@ -3711,8 +3722,12 @@
+     uint32_t src2_stride = 0;
      size_t src2_nb2 = 0;
      size_t src2_nb3 = 0;
-     const float hmx_scale = src0->type == HTP_TYPE_F16 ? 1.0f / 16.0f : 1.0f;
+-    const float hmx_scale = src0->type == HTP_TYPE_F16 ? 1.0f / 16.0f : 1.0f;
++    float hmx_scale = src0->type == HTP_TYPE_F16 ? 1.0f / 16.0f : 1.0f;
 +#if __HEXAGON_ARCH__ == 75
 +    float output_scale = 1.0f / hmx_scale;
 +#else
@@ -232,7 +237,23 @@ diff --git a/src/ggml-hexagon/htp/matmul-ops.c b/src/ggml-hexagon/htp/matmul-ops
      const float * channel_scales = NULL;
      if (kparams->scale_flags != 0) {
          const int status = hmx_mm_apply_output_scales(octx, kparams, 2, (uint32_t) n_valid, &output_scale, &channel_scales);
-@@ -3828,7 +3843,11 @@
+@@ -3725,6 +3740,15 @@
+         src2_nb2 = (src2->ne[2] == 1) ? 0 : src2->nb[2];
+         src2_nb3 = (src2->ne[3] == 1) ? 0 : src2->nb[3];
+     }
++
++#if __HEXAGON_ARCH__ == 75
++    if (src0->type == HTP_TYPE_F8_E4M3 && channel_scales == NULL) {
++        // The accumulator is wider than the intermediate FP16 output. Preserve
++        // headroom before that conversion, then restore after the FP32 readback.
++        hmx_scale = HTP_FP8_HMX_DOWNSCALE;
++        output_scale *= HTP_FP8_HMX_RESTORE;
++    }
++#endif
+ 
+     const int dst_stride = (int)(dst->nb[1] / sizeof(float));
+     float       * dst_ptr = (float *)       dst->data  + m_start * dst_stride;
+@@ -3828,13 +3852,24 @@
          return HTP_STATUS_INVAL_PARAMS;
      }
  
@@ -244,6 +265,28 @@ diff --git a/src/ggml-hexagon/htp/matmul-ops.c b/src/ggml-hexagon/htp/matmul-ops
      const float * channel_scales = NULL;
      const int scale_status = hmx_mm_apply_output_scales(octx, kparams, 3, (uint32_t) weight->ne[1], &output_scale, &channel_scales);
      if (scale_status != HTP_STATUS_OK) {
+         return scale_status;
+     }
+ 
++    float hmx_scale = 1.0f;
++#if __HEXAGON_ARCH__ == 75
++    if (weight->type == HTP_TYPE_F8_E4M3 && channel_scales == NULL) {
++        hmx_scale = HTP_FP8_HMX_DOWNSCALE;
++        output_scale *= HTP_FP8_HMX_RESTORE;
++    }
++#endif
+     const int ret = hmx_mm_2d_f32(
+         octx->ctx, (float *) dst->data, NULL, (const float *) src0->data,
+         (const uint8_t *) weight->data, (int) src0->ne[1], k, (int) weight->ne[1],
+@@ -3843,7 +3878,7 @@
+         kparams->m_chunk, kparams->n_chunk, kparams->pipeline,
+         kparams->n_threads, kparams->n_act_threads,
+         &kparams->div_n_act_threads, &kparams->div_ne00_padded,
+-        kparams->tile_size, kparams->aligned_tile_size, kparams->vtcm_size, output_scale, 1.0f,
++        kparams->tile_size, kparams->aligned_tile_size, kparams->vtcm_size, output_scale, hmx_scale,
+         channel_scales, (const float *) src1->data, (int) (src1->nb[1] / sizeof(float)), k0);
+     return ret == 0 ? HTP_STATUS_OK : HTP_STATUS_INTERNAL_ERR;
+ }
 diff --git a/src/ggml-hexagon/htp/matmul-ops.h b/src/ggml-hexagon/htp/matmul-ops.h
 --- a/src/ggml-hexagon/htp/matmul-ops.h
 +++ b/src/ggml-hexagon/htp/matmul-ops.h

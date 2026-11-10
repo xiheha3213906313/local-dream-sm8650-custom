@@ -17,8 +17,8 @@ static void check(bool ok, const char *message) { if (!ok) throw std::runtime_er
 static float decoded(uint8_t x) {
     uint16_t bits=htp_fp8_to_fp16_bits(x); __fp16 f; std::memcpy(&f,&bits,2); return f;
 }
-static void run_case(ggml_backend_t backend, int k, int n, int m, bool segmented) {
-    std::printf("FP8_DIAG case_start k=%d n=%d m=%d segmented=%d\n", k, n, m, segmented);
+static void run_case(ggml_backend_t backend, int k, int n, int m, bool segmented, bool wide_range = false) {
+    std::printf("FP8_DIAG case_start k=%d n=%d m=%d segmented=%d wide_range=%d\n", k, n, m, segmented, wide_range);
     ggml_init_params params{32*1024*1024, nullptr, true};
     ggml_context *ctx=ggml_init(params); check(ctx,"context allocation failed");
     auto *w=ggml_new_tensor_2d(ctx,GGML_TYPE_F8_E4M3,k,n);
@@ -39,6 +39,11 @@ static void run_case(ggml_backend_t backend, int k, int n, int m, bool segmented
     for(size_t i=0;i<weights.size();++i) { unsigned x=(i*73+19)%256; weights[i]=(x&127)==127?0:x; }
     std::vector<float> input(k*m),left((segmented?k/2:k)*m),right(segmented?k/2*m:0),biases(n),output(n*m);
     for(size_t i=0;i<input.size();++i) input[i]=float(int((i*17+3)%31)-15)/4096.f;
+    if (wide_range) {
+        // Coherent sums exceed FP16's 65504 limit, unlike the small-signal test.
+        for (size_t i=0; i<weights.size(); ++i) weights[i]=(i/k)%2 ? 0xfe : 0x7e;
+        for (size_t i=0; i<input.size(); ++i) input[i]=(i/k)%2 ? -1.f : 1.f;
+    }
     for(int row=0;row<m;++row) for(int col=0;col<k;++col)
         if(segmented && col>=k/2) right[row*k/2+col-k/2]=input[row*k+col];
         else left[row*(segmented?k/2:k)+col]=input[row*k+col];
@@ -59,7 +64,7 @@ static void run_case(ggml_backend_t backend, int k, int n, int m, bool segmented
         double diff=output[row*n+col]-ref; error+=diff*diff; norm+=ref*ref;
     }
     double nrmse=std::sqrt(error/std::fmax(norm,1e-30));
-    std::printf("FP8_DIAG matmul k=%d n=%d m=%d segmented=%d nrmse=%.8f elapsed_ms=%lld\n",k,n,m,segmented,nrmse,
+    std::printf("FP8_DIAG matmul k=%d n=%d m=%d segmented=%d wide_range=%d nrmse=%.8f elapsed_ms=%lld\n",k,n,m,segmented,wide_range,nrmse,
         (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count());
     ggml_backend_buffer_free(buf); ggml_free(ctx);
     check(std::isfinite(nrmse) && nrmse<=0.01,"FP8 HMX numerical comparison failed");
@@ -82,6 +87,8 @@ int main() {
             run_case(backend,3072,96,65,segmented);
             run_case(backend,9216,64,33,segmented);
             run_case(backend,12288,64,33,segmented);
+            run_case(backend,3072,96,65,segmented,true);
+            run_case(backend,12288,64,1,segmented,true);
         }
         ggml_backend_free(backend);
         rusage usage{}; getrusage(RUSAGE_SELF,&usage);

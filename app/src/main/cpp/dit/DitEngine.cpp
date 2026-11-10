@@ -122,6 +122,9 @@ void forward_progress(int step, int steps, float time, void *) {
   // not let those unrelated counters drive the UI progress bar.
   const int routed_steps =
       g_active.sampling && steps == g_active.sampling_steps ? steps : 0;
+  if (routed_steps > 0 && step > 0 && std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
+    std::fprintf(stderr, "FP8_DIAG sampling_step=%d/%d seconds=%.3f\n", step, routed_steps, time);
+  }
   if (!g_active.progress(step, routed_steps, time, g_active.user_data)) {
     // The callback asked to stop. sd_cancel_generation only takes effect at
     // the next step boundary, so record it for the generate() return path.
@@ -355,6 +358,18 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
                       std::to_string(image.channel);
     free_sd_images(images, image_count);
     return false;
+  }
+
+  if (std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
+    for (unsigned c = 0; c < 3; ++c) {
+      unsigned lo=255, hi=0;
+      double sum=0;
+      for (size_t i=0; i<pixel_count; ++i) {
+        unsigned v=image.data[i*image.channel+c];
+        lo=std::min(lo,v); hi=std::max(hi,v); sum+=v;
+      }
+      std::fprintf(stderr,"FP8_DIAG rgb channel=%u min=%u max=%u mean=%.4f\n",c,lo,hi,sum/pixel_count);
+    }
   }
 
   // Transfer the original interleaved allocation. In particular, preserve
