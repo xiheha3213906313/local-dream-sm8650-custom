@@ -57,7 +57,7 @@ diff --git a/src/ggml-hexagon/ggml-hexagon.cpp b/src/ggml-hexagon/ggml-hexagon.c
  
 +        rpc_mapped.fetch_sub(size());
          this->mapped = false;
-+        if (opt_fp8_compat) GGML_LOG_INFO("FP8_DIAG rpc allocated=%zu peak=%zu mapped=%zu mapped_peak=%zu\n",
++        if (opt_fp8_compat && rpc_mapped.load() < 64u*1024u*1024u) GGML_LOG_INFO("FP8_DIAG rpc allocated=%zu peak=%zu mapped=%zu mapped_peak=%zu\n",
 +            rpc_allocated.load(), rpc_peak.load(), rpc_mapped.load(), rpc_mapped_peak.load());
      }
  
@@ -70,17 +70,18 @@ diff --git a/src/ggml-hexagon/ggml-hexagon.cpp b/src/ggml-hexagon/ggml-hexagon.c
      const int aligned_tile_size = htp_mm_get_weight_aligned_tile_size(wtype);
      const bool pipeline = is_matmul_id ? false : htp_mm_hmx_pipeline(ne11);
      const int n_threads = (int)sess->n_threads;
-@@ -4390,6 +4405,9 @@
+@@ -4390,6 +4405,10 @@
          }
      }
  
-+    if (opt_fp8_compat && src0->type == GGML_TYPE_F8_E4M3)
++    static std::atomic<unsigned> logged_fp8_plans{0};
++    if (opt_fp8_compat && src0->type == GGML_TYPE_F8_E4M3 && logged_fp8_plans.fetch_add(1) < 8)
 +        GGML_LOG_INFO("FP8_DIAG HMX layer=%s k=%d n=%d m=%d mc=%zu nc=%zu vtcm=%zu budget=%zu pipeline=%d\n",
 +            src0->name, ne00_padded, ne01_padded, ne11, m_chunk, n_chunk, vtcm_size, vtcm_budget, pipeline);
      kparams->n_hmx = 1;
      kparams->pipeline = pipeline ? 1 : 0;
      kparams->m_chunk = m_chunk;
-@@ -5031,7 +5049,7 @@
+@@ -5031,7 +5050,7 @@
          case GGML_TYPE_IQ4_NL:
          case GGML_TYPE_MXFP4:
          case GGML_TYPE_F8_E4M3:
@@ -89,7 +90,7 @@ diff --git a/src/ggml-hexagon/ggml-hexagon.cpp b/src/ggml-hexagon/ggml-hexagon.c
                  return false;
              }
              if (src0->ne[0] % 32) {
-@@ -5098,7 +5116,7 @@
+@@ -5098,7 +5117,7 @@
      if (!supported_weight || !src1 || !src2 ||
          src1->type != GGML_TYPE_F32 || src2->type != GGML_TYPE_F32 ||
          dst->type != GGML_TYPE_F32 ||
@@ -98,7 +99,7 @@ diff --git a/src/ggml-hexagon/ggml-hexagon.cpp b/src/ggml-hexagon/ggml-hexagon.c
          return false;
      }
      if (src0->ne[0] != src1->ne[0] + src2->ne[0] || src0->ne[1] != dst->ne[0] ||
-@@ -7788,6 +7806,12 @@
+@@ -7788,6 +7807,12 @@
          opt_arch = strtoul(str_arch, NULL, 0);
      }
  
@@ -111,7 +112,7 @@ diff --git a/src/ggml-hexagon/ggml-hexagon.cpp b/src/ggml-hexagon/ggml-hexagon.c
      size_t MiB = 1024 * 1024;
  
      // Update vmem default
-@@ -7802,6 +7826,7 @@
+@@ -7802,6 +7827,7 @@
      opt_optrace   = str_optrace  ? strtoul(str_optrace, NULL, 0)          : (opt_opbatch * 256);
      opt_oppoll    = str_oppoll   ? strtoul(str_oppoll,  NULL, 0)          : opt_oppoll;
      opt_opfusion  = str_opfusion ? atoi(str_opfusion)                     : opt_opfusion;

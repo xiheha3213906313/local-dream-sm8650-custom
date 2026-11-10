@@ -645,6 +645,7 @@ class BackendService : Service() {
             env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
             if (ditEngineDir != null && DitEngine.isExperimentalDevice()) {
                 env["LOCAL_DREAM_DIT_PROFILE"] = "sm8650_fp8_compat"
+                env["LOCAL_DREAM_DIAGNOSTIC_PATH"] = File(filesDir, "sm8650-generation-trace.log").absolutePath
                 env["GGML_HEXAGON_FP8_COMPAT"] = "1"
                 env["GGML_HEXAGON_VMEM"] = "3072"
                 env.remove("GGML_HEXAGON_ARCH")

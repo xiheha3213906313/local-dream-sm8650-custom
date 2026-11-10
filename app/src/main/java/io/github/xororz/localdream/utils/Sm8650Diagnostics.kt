@@ -64,7 +64,30 @@ object Sm8650Diagnostics {
                 currentCoroutineContext().ensureActive()
                 check(System.nanoTime() - started < TimeUnit.MINUTES.toNanos(3)) { "Diagnostic timed out after 3 minutes" }
             }
-            header + "exitCode=${child.exitValue()}\n" + outputFile.readText().takeLast(2_000_000)
+            val matrixReport = header + "matrixExitCode=${child.exitValue()}\n" + outputFile.readText().takeLast(2_000_000)
+            if (child.exitValue() != 0) {
+                matrixReport
+            } else {
+                // A separate process keeps a failing DSP conv probe from losing the
+                // successful FP8 matrix report or crashing the Android process.
+                val convOutput = File(context.cacheDir, "sm8650-conv-diagnostic.log")
+                val convBuilder = ProcessBuilder(executable.path, "--conv-only").apply {
+                    directory(nativeDir)
+                    redirectErrorStream(true)
+                    redirectOutput(convOutput)
+                    environment().clear()
+                    environment().putAll(builder.environment())
+                }
+                val convChild = convBuilder.start()
+                process = convChild
+                val convStarted = System.nanoTime()
+                while (!convChild.waitFor(250, TimeUnit.MILLISECONDS)) {
+                    currentCoroutineContext().ensureActive()
+                    check(System.nanoTime() - convStarted < TimeUnit.MINUTES.toNanos(3)) { "Conv diagnostic timed out after 3 minutes" }
+                }
+                matrixReport + "\nHTP VAE probe (generation uses CPU VAE): convExitCode=${convChild.exitValue()}\n" +
+                    convOutput.readText().takeLast(256_000)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -87,13 +110,16 @@ object Sm8650Diagnostics {
     suspend fun readLastReport(context: Context): String? = withContext(Dispatchers.IO) {
         val saved = File(context.filesDir, "sm8650-last-diagnostic.txt")
         val nativeOutput = File(context.cacheDir, "sm8650-diagnostic.log")
-        val latest = listOf(saved, nativeOutput)
+        val generationTrace = File(context.filesDir, "sm8650-generation-trace.log")
+        val latest = listOf(saved, nativeOutput, generationTrace)
             .filter { it.isFile && it.length() > 0 }
             .maxByOrNull { it.lastModified() }
             ?: return@withContext null
         val contents = latest.readText().takeLast(2_000_000)
         if (latest == saved) {
             contents
+        } else if (latest == generationTrace) {
+            "Recovered generation trace (latest model run, not the matrix self-test):\n$contents"
         } else {
             // Recover output produced by older APKs, including the v0.2 diagnostic.
             "Recovered native diagnostic: model=${Build.MODEL} soc=${Build.SOC_MODEL} " +

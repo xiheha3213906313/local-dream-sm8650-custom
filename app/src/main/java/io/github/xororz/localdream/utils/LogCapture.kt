@@ -3,6 +3,7 @@ package io.github.xororz.localdream.utils
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,10 +25,15 @@ object LogCapture {
 
     val lastCapturedLogs = mutableStateOf<String?>(null)
 
-    fun start() {
+    private var diagnosticTrace: File? = null
+    private var traceStartedAt = 0L
+
+    fun start(traceFile: File? = null) {
         synchronized(lock) {
             stopInternalLocked()
             buffer.clear()
+            diagnosticTrace = traceFile
+            traceStartedAt = System.currentTimeMillis()
             try {
                 Runtime.getRuntime().exec(arrayOf("logcat", "-c")).waitFor()
             } catch (e: Exception) {
@@ -74,7 +80,8 @@ object LogCapture {
             stopInternalLocked()
             captured = buffer.toString()
         }
-        lastCapturedLogs.value = captured
+        val trace = runCatching { diagnosticTrace?.takeIf { it.isFile && it.lastModified() >= traceStartedAt }?.readText()?.takeLast(256_000) }.getOrNull()
+        lastCapturedLogs.value = if (trace.isNullOrBlank()) captured else "$captured\n\n=== Native generation trace ===\n$trace"
         Log.i(TAG, "log capture stopped, ${captured.length} chars")
     }
 

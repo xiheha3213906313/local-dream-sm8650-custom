@@ -1,15 +1,27 @@
 diff --git a/src/core/ggml_runner.cpp b/src/core/ggml_runner.cpp
-index 3737dc7..b2624bf 100644
+index 3737dc7..3010a1d 100644
 --- a/src/core/ggml_runner.cpp
 +++ b/src/core/ggml_runner.cpp
-@@ -1,4 +1,6 @@
+@@ -1,4 +1,7 @@
  #include <algorithm>
++#include "core/experimental_trace.h"
 +#include <cstdlib>
 +#include <cmath>
  #include <map>
  #include <utility>
  
-@@ -830,6 +832,11 @@ std::optional<Tensor<float>> GGMLRunner::execute_graph(ggml_cgraph* graph, int n
+@@ -267,7 +270,9 @@ std::optional<sd::Tensor<float>> GGMLRunner::read_graph_tensor(ggml_tensor* tens
+         return std::nullopt;
+     }
+ 
+-    return sd::make_sd_tensor_from_ggml<float>(tensor);
++    auto value = sd::make_sd_tensor_from_ggml<float>(tensor);
++    if (sd::experimental_trace::enabled() && !sd::experimental_trace::tensor((get_desc()+".readback").c_str(), value)) return std::nullopt;
++    return value;
+ }
+ 
+ void GGMLRunner::copy_data_to_backend_tensor(ggml_cgraph* gf, bool clear_after_copy) {
+@@ -830,6 +835,11 @@ std::optional<Tensor<float>> GGMLRunner::execute_graph(ggml_cgraph* graph, int n
          LOG_VERBOSE("%s using %zu segment%s", get_desc().c_str(),
                      plan.segments.size(), plan.segments.size() == 1 ? "" : "s");
      }
@@ -21,7 +33,7 @@ index 3737dc7..b2624bf 100644
      SegmentGraphBindings bindings(cut_cache_, plan, graph);
      SegmentWeightPipeline weights(manager, runtime_backend, reinterpret_cast<uintptr_t>(this),
                                    graph, plan, params_tensor_set_,
-@@ -951,5 +958,23 @@ std::optional<Tensor<float>> GGMLRunner::execute_graph(ggml_cgraph* graph, int n
+@@ -951,5 +961,23 @@ std::optional<Tensor<float>> GGMLRunner::execute_graph(ggml_cgraph* graph, int n
          logged_compute_bytes_ = std::move(peak_compute_bytes);
          logged_segment_count_ = plan.segments.size();
      }
@@ -164,3 +176,156 @@ index d05f88b..ea99966 100644
      ggml_tensor* try_forward_upscale(GGMLRunnerContext* ctx,
                                       ggml_tensor* x,
                                       int upscale_factor,
+diff --git a/src/model/vae/auto_encoder_kl.hpp b/src/model/vae/auto_encoder_kl.hpp
+index 390cc48..0cdc18e 100644
+--- a/src/model/vae/auto_encoder_kl.hpp
++++ b/src/model/vae/auto_encoder_kl.hpp
+@@ -776,7 +776,9 @@ struct AutoEncoderKL : public VAE {
+         auto get_graph = [&]() -> ggml_cgraph* {
+             return build_graph(z, decode_graph);
+         };
+-        return restore_trailing_singleton_dims(GGMLRunner::compute(get_graph, n_threads, false), z.dim());
++        auto result = restore_trailing_singleton_dims(GGMLRunner::compute(get_graph, n_threads, false), z.dim());
++        if (!sd::experimental_trace::tensor(decode_graph ? "vae.graph_decoded" : "vae.graph_encoded", result)) return {};
++        return result;
+     }
+ 
+     sd::Tensor<float> gaussian_latent_sample(const sd::Tensor<float>& moments, std::shared_ptr<RNG> rng) {
+diff --git a/src/model/vae/vae.hpp b/src/model/vae/vae.hpp
+index b3a239f..3fabe33 100644
+--- a/src/model/vae/vae.hpp
++++ b/src/model/vae/vae.hpp
+@@ -2,6 +2,7 @@
+ #define __SD_MODEL_VAE_VAE_HPP__
+ 
+ #include "core/tensor_ggml.hpp"
++#include "core/experimental_trace.h"
+ #include "model/common/block.hpp"
+ #include "model/vae/vae_tiling.hpp"
+ #include "model_manager.h"
+@@ -273,6 +274,12 @@ public:
+         int64_t t0              = ggml_time_ms();
+         sd::Tensor<float> input = x;
+         sd::Tensor<float> output;
++        if (sd::experimental_trace::enabled()) {
++            sd::experimental_trace::emit("stage=vae.decode_begin backend=%s direct=%d tiling=%d",
++                                         runtime_backend ? ggml_backend_name(runtime_backend) : "none",
++                                         int(conv2d_direct_enabled), int(tiling_params.enabled));
++        }
++        if (!sd::experimental_trace::tensor("vae.decode_input", input)) return {};
+ 
+         if (tiling_params.enabled) {
+             const int scale_factor = get_scale_factor();
+@@ -312,9 +319,11 @@ public:
+             LOG_ERROR("vae decode compute failed");
+             return {};
+         }
++        if (!sd::experimental_trace::tensor("vae.raw_before_clamp", output)) return {};
+         if (scale_input) {
+             scale_tensor_to_0_1(&output);
+         }
++        if (!sd::experimental_trace::tensor("vae.after_clamp", output)) return {};
+         int64_t t1 = ggml_time_ms();
+         LOG_VERBOSE("computing vae decode graph completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
+         return std::move(output);
+diff --git a/src/pipeline/diffusion_engine.cpp b/src/pipeline/diffusion_engine.cpp
+index 5574a00..ae798be 100644
+--- a/src/pipeline/diffusion_engine.cpp
++++ b/src/pipeline/diffusion_engine.cpp
+@@ -1,3 +1,4 @@
++#include "core/experimental_trace.h"
+ #include "diffusion_engine.h"
+ 
+ #include <algorithm>
+@@ -2641,13 +2642,16 @@ sd::Tensor<float> StableDiffusionGGML::decode_first_stage(const sd::Tensor<float
+     if (sd_version_is_pid(version) || sd_version_is_minit2i(version)) {
+         return sd::ops::clamp((x + 1.f) * 0.5f, 0.0f, 1.0f);
+     }
++    if (!sd::experimental_trace::tensor("sampler.final_latent", x)) return {};
+     auto latents                      = first_stage_model->diffusion_to_vae_latents(x);
++    if (!sd::experimental_trace::tensor("vae.denormalized_input", latents)) return {};
+     auto decoded                      = first_stage_model->decode(n_threads, latents, vae_tiling_params, decode_video, circular_x, circular_y);
+     const bool prefer_temporal_tiling = decode_video && first_stage_model->can_temporal_tile_decode();
+     while (decoded.empty() &&
+            sd::backend_fit::prepare_vae_decode_retry_tiling(vae_tiling_params, prefer_temporal_tiling)) {
+         decoded = first_stage_model->decode(n_threads, latents, vae_tiling_params, decode_video, circular_x, circular_y);
+     }
++    if (!sd::experimental_trace::tensor("vae.final_image", decoded)) return {};
+     return decoded;
+ }
+ 
+diff --git a/src/core/experimental_trace.h b/src/core/experimental_trace.h
+new file mode 100644
+--- /dev/null
++++ b/src/core/experimental_trace.h
+@@ -0,0 +1,70 @@
++#ifndef SD_EXPERIMENTAL_TRACE_H
++#define SD_EXPERIMENTAL_TRACE_H
++#include <algorithm>
++#include <cmath>
++#include <cstdarg>
++#include <cstddef>
++#include <cstdio>
++#include <cstdlib>
++#include <limits>
++#include <mutex>
++
++namespace sd::experimental_trace {
++inline bool enabled() { return std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr; }
++inline std::mutex& mutex() { static std::mutex value; return value; }
++inline void emit(const char* format, ...) {
++    if (!enabled()) return;
++    char message[2048];
++    va_list args; va_start(args, format); std::vsnprintf(message, sizeof(message), format, args); va_end(args);
++    std::lock_guard<std::mutex> guard(mutex());
++    std::fprintf(stderr, "FP8_TRACE %s\n", message); std::fflush(stderr);
++    const char* path = std::getenv("LOCAL_DREAM_DIAGNOSTIC_PATH");
++    if (path && path[0]) {
++        if (FILE* file = std::fopen(path, "a")) {
++            std::fprintf(file, "FP8_TRACE %s\n", message); std::fclose(file);
++        }
++    }
++}
++inline void reset() {
++    if (!enabled()) return;
++    std::lock_guard<std::mutex> guard(mutex());
++    const char* path = std::getenv("LOCAL_DREAM_DIAGNOSTIC_PATH");
++    if (path && path[0]) if (FILE* file = std::fopen(path, "w")) std::fclose(file);
++}
++struct Stats {
++    size_t finite=0, nan=0, inf=0, zero=0, below_zero=0, above_one=0;
++    float lo=std::numeric_limits<float>::infinity(), hi=-std::numeric_limits<float>::infinity();
++    double sum=0, square_sum=0;
++    void add(float x) {
++        if (std::isnan(x)) { ++nan; return; }
++        if (!std::isfinite(x)) { ++inf; return; }
++        ++finite; zero += x==0; below_zero += x<0; above_one += x>1;
++        lo=std::min(lo,x); hi=std::max(hi,x); sum+=x; square_sum+=double(x)*x;
++    }
++    double mean() const { return finite ? sum/finite : 0; }
++    double rms() const { return finite ? std::sqrt(square_sum/finite) : 0; }
++    bool valid() const { return nan==0 && inf==0; }
++};
++inline Stats summarize(const float* data, size_t count) {
++    Stats value; for (size_t i=0;i<count;++i) value.add(data[i]); return value;
++}
++template<class Tensor> bool tensor(const char* stage, const Tensor& value) {
++    if (!enabled()) return true;
++    auto stats=summarize(value.data(), size_t(value.numel()));
++    const auto& shape=value.shape();
++    emit("stage=%s count=%lld shape=%lld,%lld,%lld,%lld finite=%zu nan=%zu inf=%zu zero=%zu below0=%zu above1=%zu min=%g max=%g mean=%g rms=%g",
++         stage, (long long)value.numel(), shape.size()>0?(long long)shape[0]:0, shape.size()>1?(long long)shape[1]:0,
++         shape.size()>2?(long long)shape[2]:0, shape.size()>3?(long long)shape[3]:0,
++         stats.finite,stats.nan,stats.inf,stats.zero,stats.below_zero,stats.above_one,stats.lo,stats.hi,stats.mean(),stats.rms());
++    if (shape.size()>=3 && shape[2]==3 && !value.empty()) {
++        size_t plane=size_t(shape[0]*shape[1]);
++        for (unsigned channel=0;channel<3;++channel) {
++            auto c=summarize(value.data()+channel*plane,plane);
++            emit("stage=%s channel=%u finite=%zu nan=%zu inf=%zu min=%g max=%g mean=%g rms=%g",stage,channel,c.finite,c.nan,c.inf,c.lo,c.hi,c.mean(),c.rms());
++        }
++    }
++    if (!stats.valid()) emit("stage=%s REJECT non-finite tensor",stage);
++    return stats.valid();
++}
++}
++#endif

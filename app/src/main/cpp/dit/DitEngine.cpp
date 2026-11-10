@@ -1,3 +1,4 @@
+#include "core/experimental_trace.h"
 // libdit_engine.so: stable-diffusion.cpp behind the narrow DitEngine ABI.
 //
 // Everything specific to stable-diffusion.cpp and ggml stays on this side of
@@ -191,6 +192,14 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
   if (params->params_backend && params->params_backend[0])
     sd_params.params_backend = params->params_backend;
 
+  if (sm8650_compat) {
+    // Isolate VAE convolution from the unvalidated v75 direct-conv path.
+    // DiT and the text encoder retain the Hexagon backend.
+    sd_params.backend = "all=HTP0,vae=CPU";
+    sd_params.vae_conv_direct = false;
+    sd::experimental_trace::emit("stage=backend_selection diffusion=HTP0 te=HTP0 vae=CPU vae_direct=0");
+  }
+
   auto *ctx = new dit_ctx();
   ctx->kind = params->kind;
   diagnostic_stage("model_initialization");
@@ -297,7 +306,9 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
   }
 
   if (std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
-    gen.vae_tiling_params.enabled = true;
+    // At the fixed 512px validation size CPU decode fits one frame; avoid
+    // introducing the tiling merge as another variable in this comparison.
+    gen.vae_tiling_params.enabled = false;
     gen.vae_tiling_params.tile_size_x = 64;
     gen.vae_tiling_params.tile_size_y = 64;
     gen.vae_tiling_params.target_overlap = 0.25f;
@@ -326,6 +337,8 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
 
   sd_image_t *images = nullptr;
   int image_count = 0;
+  sd::experimental_trace::reset();
+  sd::experimental_trace::emit("stage=generation_begin build=v0.6 seed=%lld cfg=%g width=%d height=%d vae=CPU vae_direct=0", (long long)params->seed, params->cfg_scale, params->width, params->height);
   diagnostic_stage("text_encoding_and_lazy_loading");
   bool ok = false;
   try {
@@ -368,10 +381,11 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
         unsigned v=image.data[i*image.channel+c];
         lo=std::min(lo,v); hi=std::max(hi,v); sum+=v;
       }
-      std::fprintf(stderr,"FP8_DIAG rgb channel=%u min=%u max=%u mean=%.4f\n",c,lo,hi,sum/pixel_count);
+      sd::experimental_trace::emit("stage=rgb channel=%u min=%u max=%u mean=%.4f",c,lo,hi,sum/pixel_count);
     }
   }
 
+  sd::experimental_trace::emit("stage=generation_complete width=%u height=%u channels=%u", image.width,image.height,image.channel);
   // Transfer the original interleaved allocation. In particular, preserve
   // Qwen Image 2.1's native alpha channel for the core/Kotlin receiver.
   *out_pixels = image.data;

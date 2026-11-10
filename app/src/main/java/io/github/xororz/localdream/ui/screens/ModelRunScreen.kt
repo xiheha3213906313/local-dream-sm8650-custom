@@ -1375,7 +1375,7 @@ fun ModelRunScreen(
         val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         val captureEnabled = sm8650Profile || prefs.getBoolean("enable_log_capture", false)
         if (captureEnabled) {
-            LogCapture.start()
+            LogCapture.start(if (sm8650Profile) File(context.filesDir, "sm8650-generation-trace.log") else null)
         }
         onDispose {
             if (captureEnabled) {
