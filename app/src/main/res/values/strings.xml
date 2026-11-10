@@ -551,4 +551,13 @@
     <string name="dit_import_failed">Import failed: %1$s</string>
     <string name="dit_import_success">DiT model imported</string>
     <string name="dit_import_storage_busy">Wait for the model storage move or current import to finish.</string>
+    <string name="log_export_saved">Log saved to the selected location.</string>
+    <string name="log_export_cancelled">Save cancelled. The log is still available here.</string>
+    <string name="log_export_saving">Saving…</string>
+    <string name="log_copy">Copy full log</string>
+    <string name="log_copied">Full log copied.</string>
+    <string name="log_copy_failed">Could not copy the log. Use Save to export the full text.</string>
+    <string name="sm8650_diagnostic_previous">View last diagnostic log</string>
+    <string name="sm8650_diagnostic_not_found">No previous diagnostic log found. Run diagnostics first.</string>
+    <string name="sm8650_diagnostic_read_failed">Could not read the previous diagnostic log.</string>
 </resources>

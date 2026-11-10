@@ -540,4 +540,13 @@
     <string name="dit_import_failed">导入失败：%1$s</string>
     <string name="dit_import_success">DiT 模型已导入</string>
     <string name="dit_import_storage_busy">请等待模型存储迁移或当前导入完成。</string>
+    <string name="log_export_saved">日志已保存到所选位置。</string>
+    <string name="log_export_cancelled">已取消保存，日志仍保留在此处。</string>
+    <string name="log_export_saving">正在保存…</string>
+    <string name="log_copy">复制全文</string>
+    <string name="log_copied">已复制完整日志。</string>
+    <string name="log_copy_failed">复制失败，请使用“保存”导出完整日志。</string>
+    <string name="sm8650_diagnostic_previous">查看上次诊断日志</string>
+    <string name="sm8650_diagnostic_not_found">暂无诊断日志，请先运行适配诊断。</string>
+    <string name="sm8650_diagnostic_read_failed">无法读取上次诊断日志。</string>
 </resources>

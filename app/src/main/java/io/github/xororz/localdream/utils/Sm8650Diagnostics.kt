@@ -31,7 +31,7 @@ object Sm8650Diagnostics {
         var process: Process? = null
         val outputFile = File(context.cacheDir, "sm8650-diagnostic.log")
         outputFile.delete()
-        try {
+        val report = try {
             val nativeDir = DitEngine.dir(context)
             val executable = File(nativeDir, "libdit_diagnostic.so")
             check(executable.isFile) { "Diagnostic executable missing; rebuild native libraries" }
@@ -78,6 +78,26 @@ object Sm8650Diagnostics {
                 }
             }
             isRunning = false
+        }
+        // Keep a private copy across process restarts and app updates.
+        runCatching { File(context.filesDir, "sm8650-last-diagnostic.txt").writeText(report) }
+        report
+    }
+
+    suspend fun readLastReport(context: Context): String? = withContext(Dispatchers.IO) {
+        val saved = File(context.filesDir, "sm8650-last-diagnostic.txt")
+        val nativeOutput = File(context.cacheDir, "sm8650-diagnostic.log")
+        val latest = listOf(saved, nativeOutput)
+            .filter { it.isFile && it.length() > 0 }
+            .maxByOrNull { it.lastModified() }
+            ?: return@withContext null
+        val contents = latest.readText().takeLast(2_000_000)
+        if (latest == saved) {
+            contents
+        } else {
+            // Recover output produced by older APKs, including the v0.2 diagnostic.
+            "Recovered native diagnostic: model=${Build.MODEL} soc=${Build.SOC_MODEL} " +
+                "android=${Build.VERSION.RELEASE}\n$contents"
         }
     }
 }

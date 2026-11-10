@@ -1,11 +1,8 @@
 package io.github.xororz.localdream.ui.screens
 
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
 import android.widget.Toast
@@ -86,6 +83,7 @@ import io.github.xororz.localdream.data.DarkModePreference
 import io.github.xororz.localdream.navigation.Screen
 import io.github.xororz.localdream.service.ModelDownloadService
 import io.github.xororz.localdream.ui.components.BlockingProgressOverlay
+import io.github.xororz.localdream.ui.components.CapturedLogsDialog
 import io.github.xororz.localdream.ui.components.SmoothCircularWavyProgressIndicator
 import io.github.xororz.localdream.ui.components.SmoothLinearWavyProgressIndicator
 import io.github.xororz.localdream.ui.theme.LocalThemeController
@@ -97,11 +95,8 @@ import io.github.xororz.localdream.utils.Sm8650Diagnostics
 import io.github.xororz.localdream.utils.TempCleaner
 import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.io.OutputStream
 import java.text.DecimalFormat
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipInputStream
@@ -260,8 +255,6 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
     val msgFileDeleted = stringResource(R.string.file_deleted)
     val msgEmbeddingDeleted = stringResource(R.string.embedding_deleted)
     val msgEmbeddingImported = stringResource(R.string.embedding_imported)
-    val msgLogSaved = stringResource(R.string.log_saved)
-    val msgLogSaveFailed = stringResource(R.string.log_save_failed)
     val msgModelConversionSuccess = stringResource(R.string.model_conversion_success)
     val msgModelConversionFailed = stringResource(R.string.model_conversion_failed)
     val msgNpuModelAddedSuccess = stringResource(R.string.npu_model_added_success)
@@ -572,96 +565,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
 
     val capturedLogs = LogCapture.lastCapturedLogs.value
     if (capturedLogs != null) {
-        AlertDialog(
-            onDismissRequest = { LogCapture.consume() },
-            title = { Text(stringResource(R.string.captured_logs_title)) },
-            text = {
-                if (capturedLogs.isBlank()) {
-                    Text(stringResource(R.string.no_logs_captured))
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .background(
-                                MaterialTheme.colorScheme.surfaceContainerHighest,
-                                MaterialTheme.shapes.extraSmall,
-                            )
-                            .padding(8.dp),
-                    ) {
-                        Text(
-                            text = capturedLogs,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
-                        .format(Date())
-                    val filename = "local_dream_log_$timestamp.log"
-                    scope.launch(Dispatchers.IO) {
-                        val savedPath = try {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                val values = ContentValues().apply {
-                                    put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                                    put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                                    put(
-                                        MediaStore.Downloads.RELATIVE_PATH,
-                                        Environment.DIRECTORY_DOWNLOADS + "/LocalDream",
-                                    )
-                                }
-                                val resolver = context.contentResolver
-                                val uri = resolver.insert(
-                                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                                    values,
-                                ) ?: throw java.io.IOException("MediaStore insert failed")
-                                resolver.openOutputStream(uri)?.use { out ->
-                                    out.write(capturedLogs.toByteArray(Charsets.UTF_8))
-                                } ?: throw java.io.IOException("openOutputStream failed")
-                                "Downloads/LocalDream/$filename"
-                            } else {
-                                val dir = File(
-                                    Environment.getExternalStoragePublicDirectory(
-                                        Environment.DIRECTORY_DOWNLOADS,
-                                    ),
-                                    "LocalDream",
-                                )
-                                if (!dir.exists()) dir.mkdirs()
-                                val file = File(dir, filename)
-                                FileOutputStream(file).use { out ->
-                                    out.write(capturedLogs.toByteArray(Charsets.UTF_8))
-                                }
-                                file.absolutePath
-                            }
-                        } catch (e: Exception) {
-                            Log.e("LogCapture", "save failed", e)
-                            null
-                        }
-                        withContext(Dispatchers.Main) {
-                            val msg = if (savedPath != null) {
-                                msgLogSaved.format(savedPath)
-                            } else {
-                                msgLogSaveFailed
-                            }
-                            snackbarHostState.showSnackbar(msg)
-                            LogCapture.consume()
-                        }
-                    }
-                }) {
-                    Text(stringResource(R.string.save))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { LogCapture.consume() }) {
-                    Text(stringResource(R.string.close))
-                }
-            },
-        )
+        CapturedLogsDialog(logs = capturedLogs, onDismiss = { LogCapture.consume() })
     }
 
     if (showCustomModelDialog) {
@@ -1302,6 +1206,25 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                                     }
                                 },
                             ) { Text(stringResource(R.string.sm8650_diagnostic_title)) }
+                            TextButton(
+                                enabled = !diagnosticRunning,
+                                onClick = {
+                                    scope.launch {
+                                        try {
+                                            val report = Sm8650Diagnostics.readLastReport(context)
+                                            if (report != null) {
+                                                LogCapture.lastCapturedLogs.value = report
+                                            } else {
+                                                Toast.makeText(context, R.string.sm8650_diagnostic_not_found, Toast.LENGTH_LONG).show()
+                                            }
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (_: Exception) {
+                                            Toast.makeText(context, R.string.sm8650_diagnostic_read_failed, Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                            ) { Text(stringResource(R.string.sm8650_diagnostic_previous)) }
                         }
                     }
                     // Download source settings section

@@ -21,6 +21,7 @@ Qwen Image 2.1 remains disabled until the Klein device tests pass.
 
 See [build instructions and phone test procedure](docs/sm8650-fp8.md).
 Local model import is available in the DiT tab. See [Klein 4B download links and import steps](docs/klein-downloads.md).
+For diagnostic log export and recovery, see [v0.3 instructions](docs/log-export.md).
 The application is named **Local Dream SM8650**, with a separate package ID.
 The experimental APK reuses the pinned official alpha.7 core/QNN runtime and replaces
 the DiT engine with the locally built engine; full core-source compilation is a
