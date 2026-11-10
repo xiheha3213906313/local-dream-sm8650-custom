@@ -99,6 +99,8 @@ object ModelStorage {
     private val gate = Any()
     private var moving = false
 
+    @Volatile private var ditImporting = false
+
     @Volatile private var cached: Location? = null
 
     @Volatile private var publicAvailable: Boolean? = null
@@ -225,11 +227,19 @@ object ModelStorage {
     fun isBusy(): Boolean {
         val download = ModelDownloadService.downloadState.value
         val backend = BackendService.backendState.value
-        return download is ModelDownloadService.DownloadState.Downloading ||
+        return ditImporting || download is ModelDownloadService.DownloadState.Downloading ||
             download is ModelDownloadService.DownloadState.Extracting ||
             backend is BackendService.BackendState.Starting ||
             backend is BackendService.BackendState.Running
     }
+
+    fun beginDitImport(): Boolean = synchronized(gate) {
+        if (moving || ditImporting) return@synchronized false
+        ditImporting = true
+        true
+    }
+
+    fun endDitImport() = synchronized(gate) { ditImporting = false }
 
     /**
      * Runs [block] unless models are being moved, and returns null if they

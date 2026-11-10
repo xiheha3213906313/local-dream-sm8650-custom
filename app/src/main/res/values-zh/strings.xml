@@ -528,4 +528,16 @@
     <string name="sm8650_diagnostic_title">运行适配诊断</string>
     <string name="sm8650_diagnostic_running">正在测试 NPU，请保持此页面打开。完成后可导出诊断日志。</string>
     <string name="sm8650_profile_limits">实验验证配置：512 × 512、4 步、单张，仅文生图。</string>
+    <string name="dit_import_title">导入 DiT 模型</string>
+    <string name="dit_import_hint">请选择配套的扩散模型、文本编码器、VAE 和 tokenizer 文件。应用会复制到模型目录并自动命名。请使用新的模型名称。</string>
+    <string name="dit_import_hint_sm8650">小米 14 实验配置：仅 Klein 4B FP8，512×512、4 步。请选择配套的四个文件，无需手动重命名下载文件。</string>
+    <string name="dit_import_diffusion">扩散模型（.safetensors / .gguf）</string>
+    <string name="dit_import_text_encoder">文本编码器（.gguf）</string>
+    <string name="dit_import_vae">VAE（.safetensors）</string>
+    <string name="dit_import_tokenizer">分词器（tokenizer.json）</string>
+    <string name="dit_import_vision">视觉投影器（.gguf）</string>
+    <string name="dit_import_copying">正在复制模型：%1$s</string>
+    <string name="dit_import_failed">导入失败：%1$s</string>
+    <string name="dit_import_success">DiT 模型已导入</string>
+    <string name="dit_import_storage_busy">请等待模型存储迁移或当前导入完成。</string>
 </resources>

@@ -554,7 +554,7 @@ class ModelRepository private constructor(private val context: Context) {
 
         if (modelsDir.exists() && modelsDir.isDirectory) {
             modelsDir.listFiles()?.forEach { dir ->
-                if (!dir.isDirectory) return@forEach
+                if (!dir.isDirectory || dir.name.startsWith(".")) return@forEach
 
                 val modelId = dir.name
                 if (modelId in RESERVED_MODEL_IDS) {
@@ -578,7 +578,9 @@ class ModelRepository private constructor(private val context: Context) {
                     zImageFile.exists() && DitEngine.supportsModel("zimage") ->
                         customModels.add(createCustomModel(dir, isNpu = true, ditKind = "zimage"))
 
-                    kleinFile.exists() && DitEngine.isNativeDevice() ->
+                    kleinFile.exists() && DitEngine.supportsModel("klein") &&
+                        (DitEngine.isNativeDevice() || File(dir, DitModelImport.IMPORT_MARKER).isFile) &&
+                        DitModelImport.isComplete(dir, DitImportKind.KLEIN) ->
                         customModels.add(createCustomModel(dir, isNpu = true, ditKind = "klein"))
 
                     qwenImage21File.exists() && DitEngine.supportsModel("qwen21") ->
@@ -616,10 +618,21 @@ class ModelRepository private constructor(private val context: Context) {
         // Imported models have no code-level defaults: config.json (if
         // bundled in the zip) wins, the generic placeholder prompts below
         // only fill what it leaves unset.
-        val placeholders = ModelConfig(
-            prompt = "masterpiece, best quality, a cat sat on a mat,",
-            negativePrompt = "lowres, bad anatomy, bad hands, missing fingers, extra fingers, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, huge eyes, worst face, 2girl, long fingers, disconnected limbs,",
-        )
+        val placeholders = if (ditKind.isNotEmpty()) {
+            ModelConfig(
+                prompt = "a lovely cat",
+                negativePrompt = "",
+                steps = (DitImportKind.entries.firstOrNull { it.backend == ditKind }?.steps ?: 4).toFloat(),
+                cfg = 1f,
+                scheduler = "euler",
+                denoiseStrength = 1f,
+            )
+        } else {
+            ModelConfig(
+                prompt = "masterpiece, best quality, a cat sat on a mat,",
+                negativePrompt = "lowres, bad anatomy, bad hands, missing fingers, extra fingers, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, huge eyes, worst face, 2girl, long fingers, disconnected limbs,",
+            )
+        }
         val config = ModelConfig.read(modelDir) ?: ModelConfig()
 
         return Model(

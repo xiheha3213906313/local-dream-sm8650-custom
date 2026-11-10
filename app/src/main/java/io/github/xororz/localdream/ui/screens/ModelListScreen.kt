@@ -302,6 +302,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
     var showEmbeddingManagerDialog by remember { mutableStateOf(false) }
     var showCustomModelDialog by remember { mutableStateOf(false) }
     var showCustomNpuModelDialog by remember { mutableStateOf(false) }
+    var showDitImportDialog by remember { mutableStateOf(false) }
     var isConverting by remember { mutableStateOf(false) }
     var conversionProgress by remember { mutableStateOf("") }
     var extractByteProgress by remember { mutableStateOf<ExtractByteProgress?>(null) }
@@ -703,6 +704,19 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
         )
     }
 
+    if (showDitImportDialog) {
+        DitImportDialog(
+            context = context,
+            onDismiss = { showDitImportDialog = false },
+            onImported = {
+                scope.launch {
+                    modelRepository.refreshAllModels()
+                    snackbarHostState.showSnackbar(context.getString(R.string.dit_import_success))
+                }
+            },
+        )
+    }
+
     if (showCustomNpuModelDialog) {
         CustomNpuModelDialog(
             context,
@@ -1076,6 +1090,17 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                                 label = stringResource(R.string.add_custom_npu_model),
                                 accent = true,
                                 onClick = { showCustomNpuModelDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+
+                    if (page == 2 && !remoteActive && DitEngine.isSupportedDevice()) {
+                        item {
+                            AddModelOutlinedCard(
+                                label = stringResource(R.string.dit_import_title),
+                                accent = true,
+                                onClick = { showDitImportDialog = true },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
