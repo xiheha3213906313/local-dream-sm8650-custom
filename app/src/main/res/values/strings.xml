@@ -536,4 +536,7 @@
     <string name="model_storage_name_clash">The Download folder does not tell upper and lower case apart, so these would overwrite another model or embedding: %1$s. Rename or delete them first.</string>
     <string name="model_storage_conflict">%1$s already contains %2$s. Delete one of the copies, then try again.</string>
     <string name="model_storage_moving_blocked">Models are being moved. Try again once the move has finished.</string>
+    <string name="sm8650_diagnostic_title">Run SM8650 diagnostics</string>
+    <string name="sm8650_diagnostic_running">Testing the NPU. Keep this screen open; results will appear in the log export dialog.</string>
+    <string name="sm8650_profile_limits">Experimental validation: 512 × 512, 4 steps, one image, text-to-image only.</string>
 </resources>

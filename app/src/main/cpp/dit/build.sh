@@ -42,7 +42,7 @@ cmake --build "$BUILD_DIR" -j "$(nproc)"
 # lands in nativeLibraryDir.
 JNI_DIR="$(cd ../.. && pwd)/jniLibs/arm64-v8a"
 mkdir -p "$JNI_DIR"
-cp "$BUILD_DIR/lib/arm64-v8a/libdit_engine.so" "$JNI_DIR/"
+cp "$BUILD_DIR/lib/arm64-v8a/libdit_engine.so" "$BUILD_DIR/lib/arm64-v8a/libdit_diagnostic.so" "$JNI_DIR/"
 
 # The skels are Hexagon DSP binaries (ELF32, QUALCOMM DSP6), not Android
 # libraries: nothing on the CPU side ever loads them, FastRPC hands them to the
@@ -52,8 +52,9 @@ cp "$BUILD_DIR/lib/arm64-v8a/libdit_engine.so" "$JNI_DIR/"
 # SM8950/SM8975; v85 needs Hexagon SDK 6.7 or newer.
 ASSET_DIR="$(cd ../.. && pwd)/assets/ditlibs"
 mkdir -p "$ASSET_DIR"
-rm -f "$ASSET_DIR/libggml-htp-v73.so" "$ASSET_DIR/libggml-htp-v75.so"
-cp "$BUILD_DIR"/sdcpp/ggml/src/ggml-hexagon/libggml-htp-v79.so \
+rm -f "$ASSET_DIR/libggml-htp-v73.so"
+cp "$BUILD_DIR"/sdcpp/ggml/src/ggml-hexagon/libggml-htp-v75.so \
+   "$BUILD_DIR"/sdcpp/ggml/src/ggml-hexagon/libggml-htp-v79.so \
    "$BUILD_DIR"/sdcpp/ggml/src/ggml-hexagon/libggml-htp-v81.so \
    "$BUILD_DIR"/sdcpp/ggml/src/ggml-hexagon/libggml-htp-v85.so \
    "$ASSET_DIR/"

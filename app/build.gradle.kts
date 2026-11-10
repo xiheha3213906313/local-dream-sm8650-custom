@@ -25,12 +25,20 @@ detekt {
     source.setFrom(files("src/main/java", "src/main/kotlin"))
 }
 
+val sm8650Compat = providers.gradleProperty("sm8650Compat").orNull == "true"
+
 android {
     namespace = "io.github.xororz.localdream"
     compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.xororz.localdream"
+        if (sm8650Compat) {
+            applicationIdSuffix = ".sm8650"
+            versionNameSuffix = "-sm8650-experimental"
+        }
+        buildConfigField("boolean", "SM8650_COMPAT", sm8650Compat.toString())
+        manifestPlaceholders["localDreamLabel"] = if (sm8650Compat) "Local Dream SM8650" else "@string/app_name"
         minSdk = 28
 //        minSdk = 31
         targetSdk = 36
@@ -75,7 +83,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName(if (sm8650Compat) "debug" else "release")
         }
     }
     compileOptions {
@@ -163,4 +171,25 @@ dependencies {
     // Adds the ktlint-rule wrappers to detekt; we only enable UnusedImports
     // (the standalone ktlint plugin's no-unused-imports does not flag them).
     detektPlugins(libs.detekt.formatting)
+}
+
+// Fail early instead of producing a UI-only APK without the compatible DSP engine.
+if (sm8650Compat) {
+    val verifySm8650Native by tasks.registering {
+        doLast {
+            listOf("libdit_engine.so", "libdit_diagnostic.so", "libstable_diffusion_core.so").forEach { name ->
+                check(file("src/main/jniLibs/arm64-v8a/$name").isFile) {
+                    "Missing $name: build dit/build.sh and stage the pinned runtime first"
+                }
+            }
+            val skel = file("src/main/assets/ditlibs/libggml-htp-v75.so")
+            check(skel.isFile) { "Missing v75 DSP library; run dit/build.sh" }
+            val elf = skel.readBytes()
+            check(
+                elf.size > 40 && elf[4].toInt() == 1 && (elf[18].toInt() and 255) == 164 &&
+                    (elf[36].toInt() and 255) == 0x75,
+            ) { "Expected an ELF32 Hexagon v75 DSP library" }
+        }
+    }
+    tasks.named("preBuild") { dependsOn(verifySm8650Native) }
 }

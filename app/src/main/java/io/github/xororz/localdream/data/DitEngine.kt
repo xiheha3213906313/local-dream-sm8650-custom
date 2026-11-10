@@ -2,6 +2,7 @@ package io.github.xororz.localdream.data
 
 import android.content.Context
 import android.os.Build
+import io.github.xororz.localdream.BuildConfig
 import java.io.File
 
 /**
@@ -20,7 +21,17 @@ object DitEngine {
     // hard-coded allowlist; suffixes such as SM8750P naturally map to 8750.
     private const val FIRST_SUPPORTED_PART_NUMBER = 8750
 
-    fun isSupportedDevice(): Boolean {
+    internal fun isExperimentalSoc(soc: String, apiLevel: Int, enabled: Boolean): Boolean = enabled && apiLevel >= 31 && soc.uppercase() == "SM8650"
+
+    fun isExperimentalDevice(): Boolean = Build.VERSION.SDK_INT >= 31 &&
+        isExperimentalSoc(Build.SOC_MODEL, Build.VERSION.SDK_INT, BuildConfig.SM8650_COMPAT)
+
+    fun supportsModel(ditKind: String): Boolean = isNativeDevice() ||
+        (isExperimentalDevice() && ditKind == "klein")
+
+    fun isSupportedDevice(): Boolean = isNativeDevice() || isExperimentalDevice()
+
+    fun isNativeDevice(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         val soc = Build.SOC_MODEL.uppercase()
         if (!soc.startsWith("SM")) return false

@@ -8,6 +8,9 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstdio>
+#include <exception>
+#include <sys/resource.h>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -85,6 +88,15 @@ struct dit_ctx {
 
 namespace {
 
+void diagnostic_stage(const char *stage) {
+  if (!std::getenv("LOCAL_DREAM_DIT_PROFILE") || !g_log_cb) return;
+  rusage usage{};
+  getrusage(RUSAGE_SELF, &usage);
+  char message[256];
+  std::snprintf(message, sizeof(message), "FP8_DIAG stage=%s rss_peak_kib=%ld\n", stage, usage.ru_maxrss);
+  g_log_cb(static_cast<int>(SD_LOG_INFO), message, g_log_user_data);
+}
+
 void forward_log(enum sd_log_level_t level, const char *text, void *) {
   // stable-diffusion.cpp uses the same global progress callback for model
   // loading, tiled VAE work and sampling. Its image pipeline emits these
@@ -93,9 +105,11 @@ void forward_log(enum sd_log_level_t level, const char *text, void *) {
   if (g_active.ctx && text) {
     if (std::strstr(text, "generating image:")) {
       g_active.sampling = true;
+      diagnostic_stage("sampling");
     } else if (std::strstr(text, "sampling completed") ||
                std::strstr(text, "Diffusion model sampling failed")) {
       g_active.sampling = false;
+      diagnostic_stage("sampling_end_or_vae");
     }
   }
   if (g_log_cb) g_log_cb(static_cast<int>(level), text ? text : "", g_log_user_data);
@@ -145,6 +159,10 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
     return nullptr;
   }
 
+  if (std::getenv("LOCAL_DREAM_DIT_PROFILE") && params->kind != DIT_MODEL_FLUX2_KLEIN) {
+    g_create_error = "SM8650 first validation profile supports Klein 4B only";
+    return nullptr;
+  }
   sd_ctx_params_t sd_params;
   sd_ctx_params_init(&sd_params);
   sd_params.diffusion_model_path = params->diffusion_model_path;
@@ -158,14 +176,21 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
   // Keep the upstream segment prefetch enabled: it overlaps loading/repacking
   // the next graph segment with HTP execution. Component-level residency is
   // controlled separately by params_backend=all=disk.
-  sd_params.disable_prefetch = false;
+  sd_params.disable_prefetch = std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr;
   if (params->backend && params->backend[0]) sd_params.backend = params->backend;
   if (params->params_backend && params->params_backend[0])
     sd_params.params_backend = params->params_backend;
 
   auto *ctx = new dit_ctx();
   ctx->kind = params->kind;
-  ctx->sd = new_sd_ctx(&sd_params);
+  diagnostic_stage("model_initialization");
+  try {
+    ctx->sd = new_sd_ctx(&sd_params);
+  } catch (const std::exception &e) {
+    g_create_error = e.what();
+    delete ctx;
+    return nullptr;
+  }
   if (!ctx->sd) {
     g_create_error = "new_sd_ctx failed";
     delete ctx;
@@ -185,6 +210,12 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
                      int *out_width, int *out_height, int *out_channels) {
   if (!ctx || !ctx->sd || !params || !out_pixels || !out_channels) return false;
   ctx->last_error.clear();
+  if (std::getenv("LOCAL_DREAM_DIT_PROFILE") &&
+      (params->width != 512 || params->height != 512 || params->steps != 4 ||
+       params->init_image_rgb || params->reference_image_count > 0)) {
+    ctx->last_error = "SM8650 validation requires 512x512, 4 steps, text-to-image";
+    return false;
+  }
 
   std::lock_guard<std::mutex> lock(g_gen_mutex);
 
@@ -255,7 +286,12 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
                   : "preset=flux2";
   }
 
-  if (params->vae_tile_size > 0) {
+  if (std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
+    gen.vae_tiling_params.enabled = true;
+    gen.vae_tiling_params.tile_size_x = 64;
+    gen.vae_tiling_params.tile_size_y = 64;
+    gen.vae_tiling_params.target_overlap = 0.25f;
+  } else if (params->vae_tile_size > 0) {
     gen.vae_tiling_params.enabled = true;
     gen.vae_tiling_params.tile_size_x = params->vae_tile_size;
     gen.vae_tiling_params.tile_size_y = params->vae_tile_size;
@@ -280,7 +316,14 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
 
   sd_image_t *images = nullptr;
   int image_count = 0;
-  const bool ok = generate_image(ctx->sd, &gen, &images, &image_count);
+  diagnostic_stage("text_encoding_and_lazy_loading");
+  bool ok = false;
+  try {
+    ok = generate_image(ctx->sd, &gen, &images, &image_count);
+  } catch (const std::exception &e) {
+    ctx->last_error = e.what();
+  }
+  diagnostic_stage(ok ? "generation_complete" : "generation_failed");
 
   sd_set_progress_callback(nullptr, nullptr);
   sd_set_preview_callback(nullptr, PREVIEW_NONE, 0, false, false, nullptr);
@@ -290,7 +333,7 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
   if (cancelled) sd_cancel_generation(ctx->sd, SD_CANCEL_RESET);
 
   if (!ok || image_count < 1 || !images || !images[0].data) {
-    ctx->last_error = cancelled ? "cancelled" : "generate_image failed";
+    if (ctx->last_error.empty()) ctx->last_error = cancelled ? "cancelled" : "generate_image failed";
     if (images) free_sd_images(images, std::max(0, image_count));
     return false;
   }

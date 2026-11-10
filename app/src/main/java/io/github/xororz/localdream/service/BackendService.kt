@@ -11,6 +11,7 @@ import io.github.xororz.localdream.data.DitEngine
 import io.github.xororz.localdream.data.DitResolution
 import io.github.xororz.localdream.data.Model
 import io.github.xororz.localdream.data.ModelStorage
+import io.github.xororz.localdream.utils.Sm8650Diagnostics
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
@@ -477,8 +478,14 @@ class BackendService : Service() {
 
         // reconcile() has already stopped any previous process; just re-arm
         // crash reporting for the process we are about to start.
-        stopping = false
-        updateState(BackendState.Starting)
+        synchronized(Sm8650Diagnostics) {
+            if (Sm8650Diagnostics.isRunning) {
+                updateState(BackendState.Error("SM8650 diagnostics are running", modelId))
+                return false
+            }
+            stopping = false
+            updateState(BackendState.Starting)
+        }
 
         try {
             val nativeDir = applicationInfo.nativeLibraryDir
@@ -520,6 +527,14 @@ class BackendService : Service() {
                     "--port",
                     "8081",
                 )
+            }
+            if (isDitBackend(backendType) && DitEngine.isExperimentalDevice()) {
+                if (!DitEngine.supportsModel(backendType)) {
+                    throw IllegalArgumentException("SM8650 experimental build currently supports Klein 4B only")
+                }
+                check(!Sm8650Diagnostics.isRunning) { "SM8650 diagnostics are running" }
+                command.addAll(listOf("--no_img2img", "--log_level", "info"))
+                Log.i(TAG, "FP8_DIAG profile=sm8650_fp8_compat soc=${android.os.Build.SOC_MODEL}")
             }
             // DiT types load libdit_engine.so and its FastRPC skel from the
             // native library directory they ship in, not the QNN runtime dir.
@@ -628,6 +643,12 @@ class BackendService : Service() {
             val systemLibPathsStr = systemLibPaths.joinToString(":")
             env["LD_LIBRARY_PATH"] = systemLibPathsStr
             env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
+            if (ditEngineDir != null && DitEngine.isExperimentalDevice()) {
+                env["LOCAL_DREAM_DIT_PROFILE"] = "sm8650_fp8_compat"
+                env["GGML_HEXAGON_FP8_COMPAT"] = "1"
+                env["GGML_HEXAGON_VMEM"] = "3072"
+                env.remove("GGML_HEXAGON_ARCH")
+            }
             if (ditEngineDir != null) {
                 // ggml-hexagon asks FastRPC for its skel by bare name, so both
                 // the runtime directory holding the skels and the platform

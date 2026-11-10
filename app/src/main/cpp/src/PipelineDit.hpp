@@ -2,6 +2,7 @@
 #define PIPELINEDIT_HPP
 
 #include <dlfcn.h>
+#include <cstdlib>
 
 #include <chrono>
 #include <string>
@@ -100,6 +101,9 @@ class PipelineDit : public Pipeline {
   GenerationResult generate(GenerationRequest &req,
                             const ProgressCallback &progress_callback) override {
     if (!ctx_ || !api_) throw std::runtime_error("DiT engine not initialized");
+    if (std::getenv("LOCAL_DREAM_DIT_PROFILE") &&
+        (req.width != 512 || req.height != 512 || req.steps != 4 || req.img2img || !req.reference_images.empty()))
+      throw std::invalid_argument("SM8650 first validation profile requires 512x512, 4 steps, text-to-image");
     if (req.prompt.empty()) throw std::invalid_argument("Prompt empty");
     if (safety_interpreter_ && !safety_session_)
       throw std::runtime_error("SafetyChecker missing");
@@ -192,7 +196,8 @@ class PipelineDit : public Pipeline {
     // Full-frame decode needs latent-sized scratch that grows with the square
     // of the resolution; tile once past the point where it stops fitting.
     if (vae_tile_size_ > 0 &&
-        static_cast<long>(req.width) * req.height > kTileAbovePixels) {
+        (std::getenv("LOCAL_DREAM_DIT_PROFILE") ||
+         static_cast<long>(req.width) * req.height > kTileAbovePixels)) {
       params.vae_tile_size = vae_tile_size_;
       params.vae_tile_overlap = 0.25f;
     }

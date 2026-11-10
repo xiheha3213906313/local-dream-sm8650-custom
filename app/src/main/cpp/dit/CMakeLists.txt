@@ -35,6 +35,7 @@ function(apply_local_patch patch_file work_dir)
 endfunction()
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/stable-diffusion.cpp.patch" "${SDCPP_DIR}")
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/ggml.patch" "${SDCPP_DIR}/ggml")
+apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/ggml-v75-fp8.patch" "${SDCPP_DIR}/ggml")
 
 set(GGML_HEXAGON ON CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
@@ -73,9 +74,16 @@ set_target_properties(dit_engine PROPERTIES
 # The DSP-side skels are loaded by FastRPC at run time, so nothing links them
 # and EXCLUDE_FROM_ALL would otherwise leave them unbuilt. They ship in the
 # same package as the engine, so tie them to this target. The Android catalog
-# starts at SM8750 (HTP v79), so older skels would only add APK size.
-foreach(htp_version v79 v81 v85)
+# includes experimental SM8650 (HTP v75) when built with -Psm8650Compat=true.
+foreach(htp_version v75 v79 v81 v85)
     if(TARGET htp-${htp_version})
         add_dependencies(dit_engine htp-${htp_version})
     endif()
 endforeach()
+
+# A PIE executable stored as .so so Android extracts it to nativeLibraryDir.
+add_executable(dit_diagnostic Fp8Diagnostic.cpp)
+target_include_directories(dit_diagnostic PRIVATE "${SDCPP_DIR}/ggml/include" "${SDCPP_DIR}/ggml/src/ggml-hexagon/htp")
+target_link_libraries(dit_diagnostic PRIVATE ggml ggml-hexagon log)
+target_link_options(dit_diagnostic PRIVATE "-Wl,-s")
+set_target_properties(dit_diagnostic PROPERTIES OUTPUT_NAME libdit_diagnostic.so RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/${CMAKE_ANDROID_ARCH_ABI}")

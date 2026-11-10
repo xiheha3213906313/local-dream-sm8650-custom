@@ -9,6 +9,22 @@ _Also supports CPU/GPU inference_
 
 </div>
 
+## Snapdragon 8 Gen 3 experimental branch
+
+This branch adds experimental FP8-weight compatibility for **Xiaomi 14 / SM8650 / 12 GB**.
+Klein 4B is the first validation target (512×512, 4 steps, text-to-image). FP8 weights
+are decoded in bounded chunks on HVX and computed using v75 FP16 HMX kernels.
+
+**Hardware validation is pending.** Cross-compilation and host tests have passed;
+this is not a claim of successful generation or measured performance on a Xiaomi 14.
+Qwen Image 2.1 remains disabled until the Klein device tests pass.
+
+See [build instructions and phone test procedure](docs/sm8650-fp8.md).
+The application is named **Local Dream SM8650**, with a separate package ID.
+The experimental APK reuses the pinned official alpha.7 core/QNN runtime and replaces
+the DiT engine with the locally built engine; full core-source compilation is a
+separate build path. Original attribution and licenses are preserved.
+
 ## About this Repo
 
 This project is **now open sourced and completely free**. Hope you enjoy it!

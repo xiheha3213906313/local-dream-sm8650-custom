@@ -92,6 +92,7 @@ struct ServerOptions {
   // keeps TE, DiT and VAE weights from remaining co-resident between stages;
   // intra-component segment prefetch remains enabled for throughput.
   std::string dit_params_backend = "all=disk";
+  std::string dit_profile;
   int dit_threads = 4;
   int dit_vae_tile_size = 64;
   bool convert_clip_skip_2 = false;
@@ -147,6 +148,7 @@ static void showHelp() {
          "resident; for 12GB devices\n"
          "  --clip_skip_2          (convert) export CLIP with skip 2\n"
          "  --log_level <n>        QNN log level\n"
+         "  --dit_profile <name>   Experimental sm8650_fp8_compat profile\n"
          "  --version              Print QNN SDK build id\n"
          "  --help                 Show this help\n";
 }
@@ -177,11 +179,13 @@ static ServerOptions processCommandLine(int argc, char **argv) {
     OPT_UPSCALER_MODE,
     OPT_LOWRAM,
     OPT_ANIMA_SEQ_DIT,
-    OPT_LOG_LEVEL
+    OPT_LOG_LEVEL,
+    OPT_DIT_PROFILE
   };
   static struct pal::Option s_longOptions[] = {
       {"help", pal::no_argument, NULL, OPT_HELP},
       {"version", pal::no_argument, NULL, OPT_VERSION},
+      {"dit_profile", pal::required_argument, NULL, OPT_DIT_PROFILE},
       {"type", pal::required_argument, NULL, OPT_TYPE},
       {"model_dir", pal::required_argument, NULL, OPT_MODEL_DIR},
       {"lib_dir", pal::required_argument, NULL, OPT_LIB_DIR},
@@ -207,6 +211,10 @@ static ServerOptions processCommandLine(int argc, char **argv) {
   while ((opt = pal::getOptLongOnly(argc, argv, "", s_longOptions,
                                     &longIndex)) != -1) {
     switch (opt) {
+      case OPT_DIT_PROFILE:
+        opts.dit_profile = pal::g_optArg;
+        if (opts.dit_profile != "sm8650_fp8_compat") showHelpAndExit("Unknown DiT profile");
+        break;
       case OPT_HELP:
         showHelp();
         std::exit(EXIT_SUCCESS);
@@ -353,6 +361,15 @@ static std::unique_ptr<Pipeline> createPipeline(const ServerOptions &opts,
   // engine .so ships in the APK's native library directory. Its FastRPC skels
   // are copied from assets into the shared runtime directory at app startup.
   if (opts.isDit()) {
+    if (!opts.dit_profile.empty()) {
+      if (opts.type != ServerOptions::ModelType::kFlux2Klein)
+        throw std::invalid_argument("SM8650 compatibility currently supports Klein 4B only");
+      setenv("GGML_HEXAGON_FP8_COMPAT", "1", 1);
+      // Bound DSP virtual residency; this is not a claim about available RAM.
+      setenv("GGML_HEXAGON_VMEM", "3072", 1);
+      setenv("LOCAL_DREAM_DIT_PROFILE", opts.dit_profile.c_str(), 1);
+      QNN_INFO("FP8_DIAG profile=sm8650_fp8_compat params=all=disk prefetch=off");
+    }
     std::string dit_path = (dir / "dit.safetensors").string();
     if (!std::filesystem::exists(dit_path))
       dit_path = (dir / "dit.gguf").string();

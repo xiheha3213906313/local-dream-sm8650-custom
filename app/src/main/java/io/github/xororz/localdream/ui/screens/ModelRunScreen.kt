@@ -137,6 +137,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import io.github.xororz.localdream.BuildConfig
 import io.github.xororz.localdream.R
+import io.github.xororz.localdream.data.DitEngine
 import io.github.xororz.localdream.data.GenerationDefaults
 import io.github.xororz.localdream.data.GenerationMode
 import io.github.xororz.localdream.data.GenerationPreferences
@@ -248,8 +249,10 @@ fun ModelRunScreen(
     } else {
         remember(modelRepository.models) { modelRepository.models.find { it.id == modelId } }
     }
-    val supportsReferenceEditing = model?.ditKind == "klein" ||
-        model?.ditKind == "qwen21"
+    val sm8650Profile = !isRemote && DitEngine.isExperimentalDevice() && model?.ditKind == "klein"
+    val supportsReferenceEditing = !sm8650Profile && (
+        model?.ditKind == "klein" || model?.ditKind == "qwen21"
+        )
     LaunchedEffect(Unit) {
         if (!isRemote) {
             modelRepository.ensureLoaded()
@@ -438,7 +441,7 @@ fun ModelRunScreen(
     // would hit SharedPreferences in the hottest path of this composable.
     // In remote mode the img2img capability is the host's, not this device's.
     val localUseImg2img = remember { preferences.getBoolean("use_img2img", true) }
-    val useImg2img = if (isRemote) remoteRepository.useImg2img else localUseImg2img
+    val useImg2img = if (isRemote) remoteRepository.useImg2img else localUseImg2img && !sm8650Profile
     val enableTagAutocomplete = remember { preferences.getBoolean("enable_tag_autocomplete", true) }
     val tagSuggestionCount = 128
     val tagAutocompleteRepository = remember { TagAutocompleteRepository.getInstance(context) }
@@ -655,9 +658,17 @@ fun ModelRunScreen(
         }
     }
 
-    val onStepsChange = remember {
+    LaunchedEffect(sm8650Profile, currentWidth, currentHeight, steps, batchCounts) {
+        if (sm8650Profile) {
+            currentWidth = 512
+            currentHeight = 512
+            steps = 4f
+            batchCounts = 1
+        }
+    }
+    val onStepsChange = remember(sm8650Profile) {
         { value: Float ->
-            steps = value
+            steps = if (sm8650Profile) 4f else value
             saveAllFields()
         }
     }
@@ -679,16 +690,16 @@ fun ModelRunScreen(
     // DiT models take the requested size directly, so width and height are two
     // plain controls; aspectRatio is kept in step for the img2img crop and for
     // whatever reads it back from history.
-    val onDitWidthChange = remember {
+    val onDitWidthChange = remember(sm8650Profile) {
         { value: Float ->
-            currentWidth = snapDitSize(value)
+            currentWidth = if (sm8650Profile) 512 else snapDitSize(value)
             aspectRatio = inferAspectRatioString(currentWidth, currentHeight)
             saveAllFields()
         }
     }
-    val onDitHeightChange = remember {
+    val onDitHeightChange = remember(sm8650Profile) {
         { value: Float ->
-            currentHeight = snapDitSize(value)
+            currentHeight = if (sm8650Profile) 512 else snapDitSize(value)
             aspectRatio = inferAspectRatioString(currentWidth, currentHeight)
             saveAllFields()
         }
@@ -712,9 +723,9 @@ fun ModelRunScreen(
     PromptTokenCountEffect(promptField, backendReady = backendReady, backendHost = backendHost)
     PromptTokenCountEffect(negativePromptField, backendReady = backendReady, backendHost = backendHost)
 
-    val onBatchCountsChange = remember {
+    val onBatchCountsChange = remember(sm8650Profile) {
         { value: Float ->
-            batchCounts = value.roundToInt().coerceIn(1, 10)
+            batchCounts = if (sm8650Profile) 1 else value.roundToInt().coerceIn(1, 10)
             saveAllFields()
         }
     }
@@ -1360,9 +1371,9 @@ fun ModelRunScreen(
         ).show()
     }
 
-    DisposableEffect(modelId) {
+    DisposableEffect(modelId, sm8650Profile) {
         val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        val captureEnabled = prefs.getBoolean("enable_log_capture", false)
+        val captureEnabled = sm8650Profile || prefs.getBoolean("enable_log_capture", false)
         if (captureEnabled) {
             LogCapture.start()
         }
@@ -1440,6 +1451,13 @@ fun ModelRunScreen(
                 else -> if (model.isDit) snapDitSize(prefs.height.toFloat()) else prefs.height
             }
 
+            if (sm8650Profile) {
+                currentWidth = 512
+                currentHeight = 512
+                steps = 4f
+                batchCounts = 1
+                aspectRatio = "1:1"
+            }
             // Preferences are keyed by bare modelId and shared with a local
             // model of the same id, so the saved resolution may be a patch
             // the HOST doesn't have (e.g. 768 saved locally, host only has
@@ -2037,6 +2055,12 @@ fun ModelRunScreen(
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
+                            }
+                            if (sm8650Profile) {
+                                Text(
+                                    stringResource(R.string.sm8650_profile_limits),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                             if (showAdvancedSettings) {
                                 AdvancedSettingsDialog(

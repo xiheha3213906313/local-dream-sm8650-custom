@@ -93,6 +93,7 @@ import io.github.xororz.localdream.ui.theme.Motion
 import io.github.xororz.localdream.ui.theme.ThemePreset
 import io.github.xororz.localdream.ui.theme.scheme
 import io.github.xororz.localdream.utils.LogCapture
+import io.github.xororz.localdream.utils.Sm8650Diagnostics
 import io.github.xororz.localdream.utils.TempCleaner
 import java.io.BufferedOutputStream
 import java.io.File
@@ -244,6 +245,15 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
     val context = LocalContext.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
+    var diagnosticRunning by remember { mutableStateOf(false) }
+    if (diagnosticRunning) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.sm8650_diagnostic_title)) },
+            text = { Text(stringResource(R.string.sm8650_diagnostic_running)) },
+            confirmButton = {},
+        )
+    }
 
     // String resources hoisted to composable scope (lint: LocalContextGetResourceValueCall).
     val msgDownloadDone = stringResource(R.string.download_done)
@@ -1248,6 +1258,27 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                     contentPadding = PaddingValues(vertical = 16.dp),
                 ) {
+                    if (DitEngine.isExperimentalDevice()) {
+                        item {
+                            OutlinedButton(
+                                enabled = !diagnosticRunning,
+                                onClick = {
+                                    diagnosticRunning = true
+                                    scope.launch {
+                                        try {
+                                            LogCapture.lastCapturedLogs.value = Sm8650Diagnostics.run(context)
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            LogCapture.lastCapturedLogs.value = "FP8_DIAG FAIL: ${e.message}"
+                                        } finally {
+                                            diagnosticRunning = false
+                                        }
+                                    }
+                                },
+                            ) { Text(stringResource(R.string.sm8650_diagnostic_title)) }
+                        }
+                    }
                     // Download source settings section
                     item {
                         Column {
