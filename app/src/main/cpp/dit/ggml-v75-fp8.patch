@@ -1,8 +1,7 @@
 diff --git a/src/ggml-hexagon/ggml-hexagon.cpp b/src/ggml-hexagon/ggml-hexagon.cpp
-index 81667c3..7d859cb 100644
 --- a/src/ggml-hexagon/ggml-hexagon.cpp
 +++ b/src/ggml-hexagon/ggml-hexagon.cpp
-@@ -82,6 +82,7 @@ struct ggml_hexagon_device_config {
+@@ -82,6 +82,7 @@
  
  static ggml_hexagon_device_config opt_device_configs[GGML_HEXAGON_MAX_SESSIONS];
  
@@ -10,7 +9,7 @@ index 81667c3..7d859cb 100644
  static int    opt_arch    = 0; // autodetect
  static size_t opt_ndev    = 1;
  static size_t opt_nhvx    = 0; // use all
-@@ -537,6 +538,11 @@ struct ggml_backend_hexagon_buffer_type_context {
+@@ -537,6 +538,11 @@
      std::string                           name;
  };
  
@@ -22,7 +21,7 @@ index 81667c3..7d859cb 100644
  struct ggml_hexagon_rpcmem_block {
      uint8_t * base = nullptr;
      int       fd   = -1;
-@@ -555,11 +561,13 @@ struct ggml_hexagon_rpcmem_block {
+@@ -555,11 +561,13 @@
              throw std::runtime_error("ggml-hex: rpcmem_to_fd failed");
          }
          this->size = size;
@@ -36,7 +35,7 @@ index 81667c3..7d859cb 100644
          }
      }
  };
-@@ -584,12 +592,15 @@ struct ggml_hexagon_shared_buffer {
+@@ -584,12 +592,15 @@
          if (err != 0) {
              GGML_LOG_ERROR("ggml-hex: %s buffer mapping failed : domain_id %d size %zu fd %d error 0x%08x\n", sess->c_name(),
                      sess->domain_id, size(), fd(), (unsigned) err);
@@ -52,7 +51,7 @@ index 81667c3..7d859cb 100644
          this->mapped = true;
      }
  
-@@ -608,7 +619,10 @@ struct ggml_hexagon_shared_buffer {
+@@ -608,7 +619,10 @@
          HEX_VERBOSE("ggml-hex: %s unmapped buffer: base %p size %zu fd %d\n", sess->c_name(),
                  (void *) base(), size(), fd());
  
@@ -63,7 +62,7 @@ index 81667c3..7d859cb 100644
      }
  
      void alloc(size_t size) {
-@@ -4360,6 +4374,7 @@ static bool ggml_hexagon_precompute_hmx_mm_params(
+@@ -4360,6 +4374,7 @@
      size_t vtcm_budget,
      struct htp_mm_kernel_params * kparams
  ) {
@@ -71,7 +70,7 @@ index 81667c3..7d859cb 100644
      const int aligned_tile_size = htp_mm_get_weight_aligned_tile_size(wtype);
      const bool pipeline = is_matmul_id ? false : htp_mm_hmx_pipeline(ne11);
      const int n_threads = (int)sess->n_threads;
-@@ -4390,6 +4405,9 @@ static bool ggml_hexagon_precompute_hmx_mm_params(
+@@ -4390,6 +4405,9 @@
          }
      }
  
@@ -81,7 +80,7 @@ index 81667c3..7d859cb 100644
      kparams->n_hmx = 1;
      kparams->pipeline = pipeline ? 1 : 0;
      kparams->m_chunk = m_chunk;
-@@ -5031,7 +5049,7 @@ static bool ggml_hexagon_supported_mul_mat(const struct ggml_hexagon_session * s
+@@ -5031,7 +5049,7 @@
          case GGML_TYPE_IQ4_NL:
          case GGML_TYPE_MXFP4:
          case GGML_TYPE_F8_E4M3:
@@ -90,7 +89,7 @@ index 81667c3..7d859cb 100644
                  return false;
              }
              if (src0->ne[0] % 32) {
-@@ -5098,7 +5116,7 @@ static bool ggml_hexagon_supported_mul_mat_segmented(const struct ggml_hexagon_s
+@@ -5098,7 +5116,7 @@
      if (!supported_weight || !src1 || !src2 ||
          src1->type != GGML_TYPE_F32 || src2->type != GGML_TYPE_F32 ||
          dst->type != GGML_TYPE_F32 ||
@@ -99,7 +98,7 @@ index 81667c3..7d859cb 100644
          return false;
      }
      if (src0->ne[0] != src1->ne[0] + src2->ne[0] || src0->ne[1] != dst->ne[0] ||
-@@ -7788,6 +7806,12 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
+@@ -7788,6 +7806,12 @@
          opt_arch = strtoul(str_arch, NULL, 0);
      }
  
@@ -112,7 +111,7 @@ index 81667c3..7d859cb 100644
      size_t MiB = 1024 * 1024;
  
      // Update vmem default
-@@ -7802,6 +7826,7 @@ static void ggml_hexagon_init(ggml_backend_reg * reg) {
+@@ -7802,6 +7826,7 @@
      opt_optrace   = str_optrace  ? strtoul(str_optrace, NULL, 0)          : (opt_opbatch * 256);
      opt_oppoll    = str_oppoll   ? strtoul(str_oppoll,  NULL, 0)          : opt_oppoll;
      opt_opfusion  = str_opfusion ? atoi(str_opfusion)                     : opt_opfusion;
@@ -122,7 +121,6 @@ index 81667c3..7d859cb 100644
      opt_nhvx      = str_nhvx     ? strtoul(str_nhvx, NULL, 0)             : opt_nhvx;
 diff --git a/src/ggml-hexagon/htp/fp8-compat.h b/src/ggml-hexagon/htp/fp8-compat.h
 new file mode 100644
-index 0000000..38b8162
 --- /dev/null
 +++ b/src/ggml-hexagon/htp/fp8-compat.h
 @@ -0,0 +1,22 @@
@@ -149,89 +147,48 @@ index 0000000..38b8162
 +}
 +#endif
 diff --git a/src/ggml-hexagon/htp/hmx-mm-kernels-tiled.h b/src/ggml-hexagon/htp/hmx-mm-kernels-tiled.h
-index 27c7d8d..220aff0 100644
 --- a/src/ggml-hexagon/htp/hmx-mm-kernels-tiled.h
 +++ b/src/ggml-hexagon/htp/hmx-mm-kernels-tiled.h
 @@ -1,5 +1,6 @@
  #include "hmx-utils.h"
  #include "hmx-queue.h"
-+#include "fp8-compat.h"
++#include "fp8-compat-hvx.h"
  
  // MXFP4 dequantization LUT: maps 4-bit index to fp16 mantissa value
  // kvalues: 0, 0.5, 1, 1.5, 2, 3, 4, 6, 0, -0.5, -1, -1.5, -2, -3, -4, -6
-@@ -33,6 +34,54 @@ typedef struct {
+@@ -32,6 +33,16 @@
+     size_t                    row_stride;
      uint32_t                  weight_type;
  } tiled_dequantize_state_t;
- 
 +
-+static inline HVX_Vector fp8_compat_decode_half(HVX_Vector x) {
-+    const HVX_Vector mag = Q6_V_vand_VV(x, Q6_V_vsplat_R(0x007f007f));
-+    const HVX_Vector sign = Q6_Vh_vasl_VhR(Q6_V_vand_VV(x, Q6_V_vsplat_R(0x00800080)), 8);
-+    const HVX_Vector e = Q6_V_vand_VV(mag, Q6_V_vsplat_R(0x00780078));
-+    const HVX_Vector normal = Q6_Vh_vadd_VhVh(Q6_Vh_vasl_VhR(mag, 7), Q6_V_vsplat_R(0x20002000));
-+    const HVX_Vector mant = Q6_V_vand_VV(mag, Q6_V_vsplat_R(0x00070007));
-+    // Every mantissa is an exactly representable small integer; 0x1800 = 2^-9.
-+    const HVX_Vector sub = Q6_Vhf_equals_Vqf16(Q6_Vqf16_vmpy_VhfVhf(
-+        Q6_Vhf_equals_Vh(mant), Q6_V_vsplat_R(0x18001800)));
-+    HVX_Vector bits = Q6_V_vmux_QVV(Q6_Q_vcmp_eq_VhVh(e, Q6_V_vzero()), sub, normal);
-+    bits = Q6_V_vmux_QVV(Q6_Q_vcmp_eq_VhVh(mag, Q6_V_vsplat_R(0x007f007f)),
-+                         Q6_V_vsplat_R(0x7e007e00), bits);
-+    return Q6_V_vor_VV(bits, sign);
-+}
-+
-+// Runs on the DSP, so the vector widening/order is checked as well as the scalar oracle.
-+static bool fp8_compat_vector_selftest(void) {
-+    uint8_t input[256] __attribute__((aligned(VLEN)));
-+    uint16_t output[256] __attribute__((aligned(VLEN)));
-+    for (unsigned i=0; i<256; ++i) input[i]=(uint8_t)i;
-+    for (unsigned i=0; i<256; i+=128) {
-+        HVX_VectorPair p=Q6_Wuh_vunpack_Vub(hvx_vmem(input+i));
-+        hvx_vmem(output+i)=fp8_compat_decode_half(Q6_V_lo_W(p));
-+        hvx_vmem(output+i+64)=fp8_compat_decode_half(Q6_V_hi_W(p));
-+    }
-+    for (unsigned i=0; i<256; ++i)
-+        if (output[i] != htp_fp8_to_fp16_bits(input[i])) return false;
-+    return true;
-+}
 +
 +static void dequantize_tiled_weight_to_fp16_task_f8_compat(
 +        const tiled_dequantize_state_t *state, uint32_t start_tile, uint32_t end_tile) {
-+    uint16_t decoded[1024] __attribute__((aligned(VLEN)));
 +    for (uint32_t t = start_tile; t < end_tile; ++t) {
 +        const uint8_t *src = state->src + t * state->aligned_tile_size;
-+        for (unsigned b = 0; b < 8; ++b) {
-+            const HVX_VectorPair expanded = Q6_Wuh_vunpack_Vub(hvx_vmem(src + b * 128));
-+            hvx_vmem(decoded + b * 128) = fp8_compat_decode_half(Q6_V_lo_W(expanded));
-+            hvx_vmem(decoded + b * 128 + 64) = fp8_compat_decode_half(Q6_V_hi_W(expanded));
-+        }
 +        uint16_t *dst = (uint16_t *)(state->dst + t * HTP_MM_HMX_TILE_N_ELMS);
-+        for (unsigned n = 0; n < 32; ++n)
-+            for (unsigned k = 0; k < 32; ++k)
-+                dst[htp_fp16_tile_offset(n, k)] = decoded[htp_fp8_tile_offset(n, k)];
++        htp_fp8_tile_to_fp16(dst, src);
 +    }
 +}
-+
+ 
  // Dequantize a single tile from tiled weight data (already in VTCM) to tile-major FP16.
  static void dequantize_tiled_weight_to_fp16_task_q4_0(
-         const tiled_dequantize_state_t *state,
 diff --git a/src/ggml-hexagon/htp/htp-ops.h b/src/ggml-hexagon/htp/htp-ops.h
-index 54c4a6d..9bab3b9 100644
 --- a/src/ggml-hexagon/htp/htp-ops.h
 +++ b/src/ggml-hexagon/htp/htp-ops.h
-@@ -35,6 +35,8 @@ enum htp_data_type {
+@@ -34,6 +34,8 @@
+     HTP_TYPE_Q8_0_TILED,
      HTP_TYPE_MXFP4_TILED,
      HTP_TYPE_F8_E4M3_TILED,
- 
-+    HTP_TYPE_F8_E4M3_COMPAT, // FP8 DDR tiles, transient FP16 HMX tiles (v75)
 +
++    HTP_TYPE_F8_E4M3_COMPAT, // FP8 DDR tiles, transient FP16 HMX tiles (v75)
+ 
      HTP_TYPE_INVALID
  };
- 
 diff --git a/src/ggml-hexagon/htp/matmul-ops.c b/src/ggml-hexagon/htp/matmul-ops.c
-index 6b10add..e85e9dc 100644
 --- a/src/ggml-hexagon/htp/matmul-ops.c
 +++ b/src/ggml-hexagon/htp/matmul-ops.c
-@@ -1743,6 +1743,7 @@ DEQUANTIZE_WORKER_LOOP_IMPL(q4_1)
+@@ -1743,6 +1743,7 @@
  DEQUANTIZE_WORKER_LOOP_IMPL(iq4_nl)
  DEQUANTIZE_WORKER_LOOP_IMPL(mxfp4)
  DEQUANTIZE_WORKER_LOOP_IMPL(q8_0)
@@ -239,7 +196,7 @@ index 6b10add..e85e9dc 100644
  
  static void convert_f16_worker_loop(unsigned int n, unsigned int i, void *data) {
      tiled_dequantize_state_t *state = (tiled_dequantize_state_t *)data;
-@@ -2592,6 +2593,15 @@ static int hmx_mm_2d_f32(struct htp_context *ctx,
+@@ -2592,6 +2593,15 @@
          (activation1 && !hex_is_aligned(activation1, VLEN))) { return -1; }
      if (activation1 && (k0 <= 0 || k0 >= k || k0 % HTP_MM_HMX_TILE_N_COLS != 0)) { return -1; }
  
@@ -255,7 +212,7 @@ index 6b10add..e85e9dc 100644
      size_t row_stride = htp_mm_get_tiled_row_stride(weight_type, k);
      if (row_stride == 0) {
          return -1;
-@@ -2608,6 +2618,7 @@ static int hmx_mm_2d_f32(struct htp_context *ctx,
+@@ -2608,6 +2618,7 @@
          case HTP_TYPE_F16:    dequant_worker_fn = convert_f16_worker_loop; break;
          case HTP_TYPE_F32:    dequant_worker_fn = quantize_f32_worker_loop; break;
          case HTP_TYPE_F8_E4M3: break;
@@ -263,7 +220,7 @@ index 6b10add..e85e9dc 100644
          default:
              return -1;
      }
-@@ -3712,7 +3723,11 @@ static int hmx_mm_op_matmul(struct htp_ops_context * octx, const struct htp_mm_k
+@@ -3712,7 +3723,11 @@
      size_t src2_nb2 = 0;
      size_t src2_nb3 = 0;
      const float hmx_scale = src0->type == HTP_TYPE_F16 ? 1.0f / 16.0f : 1.0f;
@@ -275,7 +232,7 @@ index 6b10add..e85e9dc 100644
      const float * channel_scales = NULL;
      if (kparams->scale_flags != 0) {
          const int status = hmx_mm_apply_output_scales(octx, kparams, 2, (uint32_t) n_valid, &output_scale, &channel_scales);
-@@ -3828,7 +3843,11 @@ int op_matmul_segmented(struct htp_ops_context * octx) {
+@@ -3828,7 +3843,11 @@
          return HTP_STATUS_INVAL_PARAMS;
      }
  
@@ -288,10 +245,9 @@ index 6b10add..e85e9dc 100644
      const int scale_status = hmx_mm_apply_output_scales(octx, kparams, 3, (uint32_t) weight->ne[1], &output_scale, &channel_scales);
      if (scale_status != HTP_STATUS_OK) {
 diff --git a/src/ggml-hexagon/htp/matmul-ops.h b/src/ggml-hexagon/htp/matmul-ops.h
-index 5acd37a..80984c5 100644
 --- a/src/ggml-hexagon/htp/matmul-ops.h
 +++ b/src/ggml-hexagon/htp/matmul-ops.h
-@@ -210,6 +210,7 @@ static inline uint32_t htp_mm_get_weight_tile_size(int weight_type) {
+@@ -210,6 +210,7 @@
          case HTP_TYPE_MXFP4:
              return HTP_MM_WEIGHT_TILE_SIZE_MXFP4;
          case HTP_TYPE_F8_E4M3:
@@ -299,7 +255,7 @@ index 5acd37a..80984c5 100644
              return HTP_MM_WEIGHT_TILE_SIZE_F8_E4M3;
          default:
              return 0;
-@@ -228,6 +229,7 @@ static inline uint32_t htp_mm_get_weight_aligned_tile_size(int weight_type) {
+@@ -228,6 +229,7 @@
          case HTP_TYPE_MXFP4:
              return HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_MXFP4;
          case HTP_TYPE_F8_E4M3:
@@ -307,7 +263,7 @@ index 5acd37a..80984c5 100644
              return HTP_MM_WEIGHT_ALIGNED_TILE_SIZE_F8_E4M3;
          default:
              return 0;
-@@ -271,6 +273,7 @@ static inline size_t htp_mm_get_tiled_row_stride(int weight_type, uint32_t k) {
+@@ -271,6 +273,7 @@
          case HTP_TYPE_MXFP4:
              return (size_t) nb * htp_mm_get_weight_tile_size(weight_type);
          case HTP_TYPE_F8_E4M3:
@@ -315,3 +271,68 @@ index 5acd37a..80984c5 100644
              return (size_t) k;
          case HTP_TYPE_F16:
              return (size_t) k * sizeof(__fp16);
+diff --git a/src/ggml-hexagon/htp/fp8-compat-hvx.h b/src/ggml-hexagon/htp/fp8-compat-hvx.h
+new file mode 100644
+--- /dev/null
++++ b/src/ggml-hexagon/htp/fp8-compat-hvx.h
+@@ -0,0 +1,60 @@
++#ifndef HTP_FP8_COMPAT_HVX_H
++#define HTP_FP8_COMPAT_HVX_H
++#include <stdbool.h>
++#include <hexagon_types.h>
++#include <hexagon_protos.h>
++#include <hvx_hexagon_protos.h>
++#include "fp8-compat.h"
++#if __HVX_LENGTH__ != 128
++#error "FP8 compatibility requires 128-byte HVX vectors"
++#endif
++#define HTP_FP8_VMEM(p) (*(HVX_Vector *)(p))
++static inline HVX_Vector fp8_compat_decode_half(HVX_Vector x) {
++    const HVX_Vector mag = Q6_V_vand_VV(x, Q6_V_vsplat_R(0x007f007f));
++    const HVX_Vector sign = Q6_Vh_vasl_VhR(Q6_V_vand_VV(x, Q6_V_vsplat_R(0x00800080)), 8);
++    const HVX_Vector e = Q6_V_vand_VV(mag, Q6_V_vsplat_R(0x00780078));
++    const HVX_Vector normal = Q6_Vh_vadd_VhVh(Q6_Vh_vasl_VhR(mag, 7), Q6_V_vsplat_R(0x20002000));
++    const HVX_Vector mant = Q6_V_vand_VV(mag, Q6_V_vsplat_R(0x00070007));
++    // v75 qfloat multiplication rounds these exact subnormal values up by one
++    // FP16 bit. Construct all eight encodings with integer operations instead.
++    HVX_Vector sub = Q6_V_vmux_QVV(
++        Q6_Q_vcmp_gt_VhVh(mant, Q6_V_vsplat_R(0x00030003)),
++        Q6_Vh_vadd_VhVh(Q6_Vh_vasl_VhR(mant, 8), Q6_V_vsplat_R(0x1c001c00)),
++        Q6_Vh_vadd_VhVh(Q6_Vh_vasl_VhR(mant, 9), Q6_V_vsplat_R(0x18001800)));
++    sub = Q6_V_vmux_QVV(Q6_Q_vcmp_eq_VhVh(mant, Q6_V_vsplat_R(0x00010001)),
++                        Q6_V_vsplat_R(0x18001800), sub);
++    sub = Q6_V_vmux_QVV(Q6_Q_vcmp_eq_VhVh(mant, Q6_V_vzero()), Q6_V_vzero(), sub);
++    HVX_Vector bits = Q6_V_vmux_QVV(Q6_Q_vcmp_eq_VhVh(e, Q6_V_vzero()), sub, normal);
++    bits = Q6_V_vmux_QVV(Q6_Q_vcmp_eq_VhVh(mag, Q6_V_vsplat_R(0x007f007f)),
++                         Q6_V_vsplat_R(0x7e007e00), bits);
++    return Q6_V_vor_VV(bits, sign);
++}
++
++// Runs on the DSP, so the vector widening/order is checked as well as the scalar oracle.
++static bool fp8_compat_vector_selftest(void) {
++    uint8_t input[256] __attribute__((aligned(128)));
++    uint16_t output[256] __attribute__((aligned(128)));
++    for (unsigned i=0; i<256; ++i) input[i]=(uint8_t)i;
++    for (unsigned i=0; i<256; i+=128) {
++        HVX_VectorPair p=Q6_Wuh_vunpack_Vub(HTP_FP8_VMEM(input+i));
++        HTP_FP8_VMEM(output+i)=fp8_compat_decode_half(Q6_V_lo_W(p));
++        HTP_FP8_VMEM(output+i+64)=fp8_compat_decode_half(Q6_V_hi_W(p));
++    }
++    for (unsigned i=0; i<256; ++i)
++        if (output[i] != htp_fp8_to_fp16_bits(input[i])) return false;
++    return true;
++}
++
++static inline void htp_fp8_tile_to_fp16(uint16_t *dst, const uint8_t *src) {
++    uint16_t decoded[1024] __attribute__((aligned(128)));
++    for (unsigned b = 0; b < 8; ++b) {
++        const HVX_VectorPair expanded = Q6_Wuh_vunpack_Vub(HTP_FP8_VMEM(src + b * 128));
++        HTP_FP8_VMEM(decoded + b * 128) = fp8_compat_decode_half(Q6_V_lo_W(expanded));
++        HTP_FP8_VMEM(decoded + b * 128 + 64) = fp8_compat_decode_half(Q6_V_hi_W(expanded));
++    }
++    for (unsigned n = 0; n < 32; ++n)
++        for (unsigned k = 0; k < 32; ++k)
++            dst[htp_fp16_tile_offset(n, k)] = decoded[htp_fp8_tile_offset(n, k)];
++}
++#undef HTP_FP8_VMEM
++#endif

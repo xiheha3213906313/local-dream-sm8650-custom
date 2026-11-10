@@ -173,10 +173,17 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
   sd_params.flash_attn = params->flash_attn;
   sd_params.diffusion_flash_attn = params->flash_attn;
   sd_params.vae_conv_direct = params->vae_conv_direct;
-  // Keep the upstream segment prefetch enabled: it overlaps loading/repacking
-  // the next graph segment with HTP execution. Component-level residency is
-  // controlled separately by params_backend=all=disk.
-  sd_params.disable_prefetch = std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr;
+  const bool sm8650_compat = std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr;
+  sd_params.disable_prefetch = sm8650_compat;
+  if (sm8650_compat) {
+    // Hexagon reports no live VRAM capacity. Without an explicit model budget,
+    // the planner builds one segment and maps almost 4 GiB of Klein weights.
+    // This limit includes managed weights and graph buffers; the batch VMEM
+    // limit is separate. Leave headroom for FastRPC and Android allocations.
+    sd_params.max_vram = "HTP0=2.0";
+    sd_params.disable_segmented_compute = false;
+    std::fprintf(stderr, "FP8_DIAG managed_budget_mib=2048 prefetch=0 segmented_compute=1\n");
+  }
   if (params->backend && params->backend[0]) sd_params.backend = params->backend;
   if (params->params_backend && params->params_backend[0])
     sd_params.params_backend = params->params_backend;

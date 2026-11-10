@@ -18,6 +18,7 @@ static float decoded(uint8_t x) {
     uint16_t bits=htp_fp8_to_fp16_bits(x); __fp16 f; std::memcpy(&f,&bits,2); return f;
 }
 static void run_case(ggml_backend_t backend, int k, int n, int m, bool segmented) {
+    std::printf("FP8_DIAG case_start k=%d n=%d m=%d segmented=%d\n", k, n, m, segmented);
     ggml_init_params params{32*1024*1024, nullptr, true};
     ggml_context *ctx=ggml_init(params); check(ctx,"context allocation failed");
     auto *w=ggml_new_tensor_2d(ctx,GGML_TYPE_F8_E4M3,k,n);
@@ -78,6 +79,9 @@ int main() {
             run_case(backend,64,32,1,segmented);
             run_case(backend,128,96,33,segmented);
             run_case(backend,3072,3072,32,segmented);
+            run_case(backend,3072,96,65,segmented);
+            run_case(backend,9216,64,33,segmented);
+            run_case(backend,12288,64,33,segmented);
         }
         ggml_backend_free(backend);
         rusage usage{}; getrusage(RUSAGE_SELF,&usage);

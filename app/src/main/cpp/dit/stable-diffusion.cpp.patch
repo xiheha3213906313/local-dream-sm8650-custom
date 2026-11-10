@@ -100,3 +100,24 @@ index d05f88b..ea99966 100644
      ggml_tensor* try_forward_upscale(GGMLRunnerContext* ctx,
                                       ggml_tensor* x,
                                       int upscale_factor,
+diff --git a/src/core/ggml_runner.cpp b/src/core/ggml_runner.cpp
+--- a/src/core/ggml_runner.cpp
++++ b/src/core/ggml_runner.cpp
+@@ -1,4 +1,5 @@
+ #include <algorithm>
++#include <cstdlib>
+ #include <map>
+ #include <utility>
+ 
+@@ -830,6 +831,11 @@
+         LOG_VERBOSE("%s using %zu segment%s", get_desc().c_str(),
+                     plan.segments.size(), plan.segments.size() == 1 ? "" : "s");
+     }
++    if (std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr && segments_changed) {
++        LOG_INFO("FP8_DIAG runner=%s segments=%zu segmented=%d budget_bytes=%zu prefetch=%d",
++                 get_desc().c_str(), plan.segments.size(), int(segmented), max_graph_vram_bytes,
++                 int(segmented && manager != nullptr && manager->prefetch_enabled()));
++    }
+     SegmentGraphBindings bindings(cut_cache_, plan, graph);
+     SegmentWeightPipeline weights(manager, runtime_backend, reinterpret_cast<uintptr_t>(this),
+                                   graph, plan, params_tensor_set_,
