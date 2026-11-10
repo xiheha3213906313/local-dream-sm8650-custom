@@ -25,6 +25,8 @@ The [v0.6 VAE isolation and trace notes](docs/sm8650-v0.6.md) describe the curre
 SM8650 v0.7：保留 CPU 解码，修复 v75 FP16 GroupNorm 累计格式并增加数值对照，见 [修复与复测说明](docs/sm8650-v0.7.md)。
 
 SM8650 v0.8：主页「⋮ → 设置」新增 CPU 解码开关，关闭可试用修复后的 DSP VAE，见 [设置与对照说明](docs/sm8650-v0.8.md)。
+
+SM8650 v0.9：解除当前 Klein 4B 的尺寸、步数、张数与图像编辑测试锁，默认 DSP，见 [功能解锁说明](docs/sm8650-v0.9.md)。
 See [v0.5 numerical stability and progress changes](docs/sm8650-v0.5.md).
 The [v0.4 repair notes](docs/sm8650-v0.4.md) cover the reproduced v75 conversion failure and the model residency budget.
 Local model import is available in the DiT tab. See [Klein 4B download links and import steps](docs/klein-downloads.md).

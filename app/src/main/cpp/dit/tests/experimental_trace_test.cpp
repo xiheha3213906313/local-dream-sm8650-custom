@@ -29,10 +29,10 @@ int main() {
     assert(!stats.valid());
     std::string path="/tmp/sm8650-trace-test-"+std::to_string(getpid())+".log";
     setenv("LOCAL_DREAM_DIAGNOSTIC_PATH",path.c_str(),1);
-    unsetenv("LOCAL_DREAM_DIT_PROFILE");
+    unsetenv("LOCAL_DREAM_SM8650_PROFILE");
     emit("disabled");
     assert(!std::ifstream(path).good());
-    setenv("LOCAL_DREAM_DIT_PROFILE","sm8650_fp8_compat",1);
+    setenv("LOCAL_DREAM_SM8650_PROFILE","sm8650_fp8_compat",1);
     TensorFixture rgb{{1,1,1,1,0,0,0,0,0,0,0,0},{2,2,3,1}};
     assert(tensor("vae.raw_before_clamp",rgb));
     assert(read(path).find("channel=0 finite=4 nan=0 inf=0 min=1 max=1")!=std::string::npos);

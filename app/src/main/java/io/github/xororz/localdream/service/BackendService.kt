@@ -538,7 +538,7 @@ class BackendService : Service() {
                     throw IllegalArgumentException("SM8650 experimental build currently supports Klein 4B only")
                 }
                 check(!Sm8650Diagnostics.isRunning) { "SM8650 diagnostics are running" }
-                command.addAll(listOf("--no_img2img", "--log_level", "info"))
+                command.addAll(listOf("--log_level", "info"))
                 Log.i(TAG, "FP8_DIAG profile=sm8650_fp8_compat soc=${android.os.Build.SOC_MODEL}")
             }
             // DiT types load libdit_engine.so and its FastRPC skel from the
@@ -652,7 +652,10 @@ class BackendService : Service() {
                 val vaeBackend = if (config.sm8650CpuVae) "CPU" else "HTP0"
                 env["LOCAL_DREAM_SM8650_VAE"] = vaeBackend
                 Log.i(TAG, "FP8_DIAG vae_backend=$vaeBackend cpu_decode=${config.sm8650CpuVae}")
-                env["LOCAL_DREAM_DIT_PROFILE"] = "sm8650_fp8_compat"
+                // The old profile also enables a legacy 512px/4-step guard in
+                // the core. Keep compatibility settings independent of it.
+                env.remove("LOCAL_DREAM_DIT_PROFILE")
+                env["LOCAL_DREAM_SM8650_PROFILE"] = "sm8650_fp8_compat"
                 env["LOCAL_DREAM_DIAGNOSTIC_PATH"] = File(filesDir, "sm8650-generation-trace.log").absolutePath
                 env["GGML_HEXAGON_FP8_COMPAT"] = "1"
                 env["GGML_HEXAGON_VMEM"] = "3072"

@@ -91,7 +91,7 @@ struct dit_ctx {
 namespace {
 
 void diagnostic_stage(const char *stage) {
-  if (!std::getenv("LOCAL_DREAM_DIT_PROFILE") || !g_log_cb) return;
+  if (!std::getenv("LOCAL_DREAM_SM8650_PROFILE") || !g_log_cb) return;
   rusage usage{};
   getrusage(RUSAGE_SELF, &usage);
   char message[256];
@@ -124,7 +124,7 @@ void forward_progress(int step, int steps, float time, void *) {
   // not let those unrelated counters drive the UI progress bar.
   const int routed_steps =
       g_active.sampling && steps == g_active.sampling_steps ? steps : 0;
-  if (routed_steps > 0 && step > 0 && std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
+  if (routed_steps > 0 && step > 0 && std::getenv("LOCAL_DREAM_SM8650_PROFILE")) {
     std::fprintf(stderr, "FP8_DIAG sampling_step=%d/%d seconds=%.3f\n", step, routed_steps, time);
   }
   if (!g_active.progress(step, routed_steps, time, g_active.user_data)) {
@@ -164,7 +164,7 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
     return nullptr;
   }
 
-  if (std::getenv("LOCAL_DREAM_DIT_PROFILE") && params->kind != DIT_MODEL_FLUX2_KLEIN) {
+  if (std::getenv("LOCAL_DREAM_SM8650_PROFILE") && params->kind != DIT_MODEL_FLUX2_KLEIN) {
     g_create_error = "SM8650 first validation profile supports Klein 4B only";
     return nullptr;
   }
@@ -178,7 +178,7 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
   sd_params.flash_attn = params->flash_attn;
   sd_params.diffusion_flash_attn = params->flash_attn;
   sd_params.vae_conv_direct = params->vae_conv_direct;
-  const bool sm8650_compat = std::getenv("LOCAL_DREAM_DIT_PROFILE") != nullptr;
+  const bool sm8650_compat = std::getenv("LOCAL_DREAM_SM8650_PROFILE") != nullptr;
   sd_params.disable_prefetch = sm8650_compat;
   if (sm8650_compat) {
     // Hexagon reports no live VRAM capacity. Without an explicit model budget,
@@ -194,8 +194,8 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
     sd_params.params_backend = params->params_backend;
 
   const char *vae_backend = std::getenv("LOCAL_DREAM_SM8650_VAE");
-  // Only an explicit HTP0 selection enables the experimental full DSP decode.
-  const bool cpu_vae = !vae_backend || std::strcmp(vae_backend, "HTP0") != 0;
+  // New sessions default to DSP; CPU is an explicit, persisted fallback.
+  const bool cpu_vae = vae_backend && std::strcmp(vae_backend, "CPU") == 0;
   if (sm8650_compat) {
     sd_params.backend = cpu_vae ? "all=HTP0,vae=CPU" : "all=HTP0";
     sd_params.vae_conv_direct = !cpu_vae;
@@ -232,12 +232,6 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
                      int *out_width, int *out_height, int *out_channels) {
   if (!ctx || !ctx->sd || !params || !out_pixels || !out_channels) return false;
   ctx->last_error.clear();
-  if (std::getenv("LOCAL_DREAM_DIT_PROFILE") &&
-      (params->width != 512 || params->height != 512 || params->steps != 4 ||
-       params->init_image_rgb || params->reference_image_count > 0)) {
-    ctx->last_error = "SM8650 validation requires 512x512, 4 steps, text-to-image";
-    return false;
-  }
 
   std::lock_guard<std::mutex> lock(g_gen_mutex);
 
@@ -308,9 +302,11 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
                   : "preset=flux2";
   }
 
-  if (std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
-    // Preserve one-frame CPU decode; bound memory on the HTP test path.
-    gen.vae_tiling_params.enabled = !ctx->sm8650_cpu_vae;
+  if (std::getenv("LOCAL_DREAM_SM8650_PROFILE")) {
+    // Keep the verified 512px CPU path intact; tile larger canvases on CPU
+    // as well as DSP to bound VAE encode/decode working memory.
+    gen.vae_tiling_params.enabled = !ctx->sm8650_cpu_vae ||
+        static_cast<int64_t>(params->width)*params->height > 512LL*512;
     gen.vae_tiling_params.tile_size_x = 64;
     gen.vae_tiling_params.tile_size_y = 64;
     gen.vae_tiling_params.target_overlap = 0.25f;
@@ -340,7 +336,7 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
   sd_image_t *images = nullptr;
   int image_count = 0;
   sd::experimental_trace::reset();
-  sd::experimental_trace::emit("stage=generation_begin build=v0.8 seed=%lld cfg=%g width=%d height=%d vae=%s vae_direct=%d tiling=%d", (long long)params->seed, params->cfg_scale, params->width, params->height,ctx->sm8650_cpu_vae?"CPU":"HTP0",int(!ctx->sm8650_cpu_vae),int(gen.vae_tiling_params.enabled));
+  sd::experimental_trace::emit("stage=generation_begin build=v0.9 seed=%lld cfg=%g width=%d height=%d vae=%s vae_direct=%d tiling=%d", (long long)params->seed, params->cfg_scale, params->width, params->height,ctx->sm8650_cpu_vae?"CPU":"HTP0",int(!ctx->sm8650_cpu_vae),int(gen.vae_tiling_params.enabled));
   diagnostic_stage("text_encoding_and_lazy_loading");
   bool ok = false;
   try {
@@ -375,7 +371,7 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
     return false;
   }
 
-  if (std::getenv("LOCAL_DREAM_DIT_PROFILE")) {
+  if (std::getenv("LOCAL_DREAM_SM8650_PROFILE")) {
     for (unsigned c = 0; c < 3; ++c) {
       unsigned lo=255, hi=0;
       double sum=0;

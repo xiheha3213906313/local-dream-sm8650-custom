@@ -538,7 +538,6 @@
     <string name="model_storage_moving_blocked">Models are being moved. Try again once the move has finished.</string>
     <string name="sm8650_diagnostic_title">Run SM8650 diagnostics</string>
     <string name="sm8650_diagnostic_running">Testing the NPU. Keep this screen open; results will appear in the log export dialog.</string>
-    <string name="sm8650_profile_limits">Experimental validation: 512 × 512, 4 steps, one image, text-to-image only.</string>
     <string name="dit_import_title">Import DiT model</string>
     <string name="dit_import_hint">Select the matching diffusion model, text encoder, VAE and tokenizer files. Files are copied into model storage and named automatically. Choose a new model name.</string>
     <string name="dit_import_hint_sm8650">Xiaomi 14 experimental profile: Klein 4B FP8 only, 512×512, 4 steps. Select all four matching files. Original download filenames are accepted.</string>

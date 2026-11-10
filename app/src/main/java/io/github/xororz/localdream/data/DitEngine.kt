@@ -17,8 +17,8 @@ object DitEngine {
     const val ENGINE_LIB = "libdit_engine.so"
     const val SM8650_CPU_VAE_KEY = "sm8650_cpu_vae"
 
-    // Keep the working CPU path until full DSP VAE decoding is validated.
-    const val SM8650_CPU_VAE_DEFAULT = true
+    // DSP decode completed successfully on the target Xiaomi 14; retain CPU as an explicit fallback.
+    const val SM8650_CPU_VAE_DEFAULT = false
 
     // The optimized FP8 path has been validated from SM8750 onward. Comparing
     // the numeric part also admits newer SM-series chips without maintaining a
