@@ -68,25 +68,39 @@ object Sm8650Diagnostics {
             if (child.exitValue() != 0) {
                 matrixReport
             } else {
-                // A separate process keeps a failing DSP conv probe from losing the
-                // successful FP8 matrix report or crashing the Android process.
-                val convOutput = File(context.cacheDir, "sm8650-conv-diagnostic.log")
-                val convBuilder = ProcessBuilder(executable.path, "--conv-only").apply {
-                    directory(nativeDir)
-                    redirectErrorStream(true)
-                    redirectOutput(convOutput)
-                    environment().clear()
-                    environment().putAll(builder.environment())
+                // Isolate each VAE probe so a DSP failure preserves earlier reports.
+                var combined = matrixReport
+                for (kind in listOf("norm", "conv")) {
+                    val probeOutput = File(context.cacheDir, "sm8650-$kind-diagnostic.log")
+                    val probeBuilder = ProcessBuilder(executable.path, "--$kind-only").apply {
+                        directory(nativeDir)
+                        redirectErrorStream(true)
+                        redirectOutput(probeOutput)
+                        environment().clear()
+                        environment().putAll(builder.environment())
+                    }
+                    val probeChild = probeBuilder.start()
+                    process = probeChild
+                    val probeStarted = System.nanoTime()
+                    try {
+                        while (!probeChild.waitFor(250, TimeUnit.MILLISECONDS)) {
+                            currentCoroutineContext().ensureActive()
+                            check(System.nanoTime() - probeStarted < TimeUnit.MINUTES.toNanos(3)) { "$kind diagnostic timed out after 3 minutes" }
+                        }
+                        combined += "\nHTP VAE probe (generation uses CPU VAE): ${kind}ExitCode=${probeChild.exitValue()}\n"
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        combined += "\nHTP $kind probe failed: ${e.message}\n"
+                    } finally {
+                        if (probeChild.isAlive) {
+                            probeChild.destroyForcibly()
+                            probeChild.waitFor(2, TimeUnit.SECONDS)
+                        }
+                        combined += if (probeOutput.isFile) probeOutput.readText().takeLast(256_000) else "No native output"
+                    }
                 }
-                val convChild = convBuilder.start()
-                process = convChild
-                val convStarted = System.nanoTime()
-                while (!convChild.waitFor(250, TimeUnit.MILLISECONDS)) {
-                    currentCoroutineContext().ensureActive()
-                    check(System.nanoTime() - convStarted < TimeUnit.MINUTES.toNanos(3)) { "Conv diagnostic timed out after 3 minutes" }
-                }
-                matrixReport + "\nHTP VAE probe (generation uses CPU VAE): convExitCode=${convChild.exitValue()}\n" +
-                    convOutput.readText().takeLast(256_000)
+                combined
             }
         } catch (e: CancellationException) {
             throw e

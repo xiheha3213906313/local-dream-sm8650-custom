@@ -21,6 +21,8 @@ Qwen Image 2.1 remains disabled until the Klein device tests pass.
 
 See [build instructions and phone test procedure](docs/sm8650-fp8.md).
 The [v0.6 VAE isolation and trace notes](docs/sm8650-v0.6.md) describe the current SM8650 CPU VAE compatibility path; DiT remains on HTP0.
+
+SM8650 v0.7：保留 CPU 解码，修复 v75 FP16 GroupNorm 累计格式并增加数值对照，见 [修复与复测说明](docs/sm8650-v0.7.md)。
 See [v0.5 numerical stability and progress changes](docs/sm8650-v0.5.md).
 The [v0.4 repair notes](docs/sm8650-v0.4.md) cover the reproduced v75 conversion failure and the model residency budget.
 Local model import is available in the DiT tab. See [Klein 4B download links and import steps](docs/klein-downloads.md).

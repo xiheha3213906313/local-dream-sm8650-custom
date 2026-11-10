@@ -338,7 +338,7 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
   sd_image_t *images = nullptr;
   int image_count = 0;
   sd::experimental_trace::reset();
-  sd::experimental_trace::emit("stage=generation_begin build=v0.6 seed=%lld cfg=%g width=%d height=%d vae=CPU vae_direct=0", (long long)params->seed, params->cfg_scale, params->width, params->height);
+  sd::experimental_trace::emit("stage=generation_begin build=v0.7 seed=%lld cfg=%g width=%d height=%d vae=CPU vae_direct=0", (long long)params->seed, params->cfg_scale, params->width, params->height);
   diagnostic_stage("text_encoding_and_lazy_loading");
   bool ok = false;
   try {

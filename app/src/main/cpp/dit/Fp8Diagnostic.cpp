@@ -122,7 +122,57 @@ static void run_conv_case(ggml_backend_t backend, int side, int ci, int co, int 
     ggml_free(ctx);ggml_free(weights_ctx);
     check(!nonfinite&&std::isfinite(nrmse)&&nrmse<=0.01,"HTP direct conv disagrees with CPU reference");
 }
+// Compare the actual DMA/worker/fusion path, in addition to simulator statistics.
+static void run_norm_case(ggml_backend_t backend, int side, int channels, bool half, bool silu, bool constant=false) {
+    std::printf("HTP_NORM_DIAG case_start side=%d channels=%d half=%d silu=%d constant=%d\n",side,channels,half,silu,constant);
+    const int groups=32,spatial=side*side,per_group=channels/groups*spatial;
+    const size_t count=size_t(spatial)*channels;
+    ggml_init_params params{4*1024*1024,nullptr,true};
+    auto *ctx=ggml_init(params);check(ctx,"norm context allocation failed");
+    auto *x=ggml_new_tensor_4d(ctx,half?GGML_TYPE_F16:GGML_TYPE_F32,side,side,channels,1);
+    auto *w=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,channels);
+    auto *b=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,channels);
+    auto *result=silu?ggml_group_norm_affine_silu(ctx,x,w,b,groups,1e-6f):ggml_group_norm(ctx,x,groups,1e-6f);
+    check(ggml_backend_supports_op(backend,result),"HTP group norm unsupported");
+    auto *graph=ggml_new_graph(ctx);ggml_build_forward_expand(graph,result);
+    auto *buffer=ggml_backend_alloc_ctx_tensors(ctx,backend);check(buffer,"norm RPC allocation failed");
+    std::vector<float> input(count),weights(channels),bias(channels),out32(half?0:count);
+    std::vector<__fp16> input16(half?count:0),out16(half?count:0);
+    for(size_t i=0;i<count;++i){
+        // Nonzero mean is essential: a near-zero mean would hide the v75 bug.
+        input[i]=constant?3.f:1.f+float(int((i*13)%31)-15)/16.f;
+        if(half)input16[i]=(__fp16)input[i];
+    }
+    for(int c=0;c<channels;++c){weights[c]=0.5f+float(c%7)/8.f;bias[c]=float(c%5-2)/8.f;}
+    ggml_backend_tensor_set(x,half?(void*)input16.data():(void*)input.data(),0,count*(half?2:4));
+    if(silu){ggml_backend_tensor_set(w,weights.data(),0,channels*4);ggml_backend_tensor_set(b,bias.data(),0,channels*4);}
+    check(ggml_backend_graph_compute(backend,graph)==GGML_STATUS_SUCCESS,"HTP group norm compute failed");
+    ggml_backend_synchronize(backend);
+    ggml_backend_tensor_get(result,half?(void*)out16.data():(void*)out32.data(),0,count*(half?2:4));
+    double error=0,norm=0,max_error=0;size_t nonfinite=0;
+    for(int g=0;g<groups;++g){
+        double sum=0,square=0;
+        const size_t start=size_t(g)*per_group;
+        for(int j=0;j<per_group;++j){double v=input[start+j];sum+=v;square+=v*v;}
+        double mean=sum/per_group,variance=std::fmax(0.,square/per_group-mean*mean);
+        double inv=1./std::sqrt(variance+1e-6);
+        for(int j=0;j<per_group;++j){
+            const size_t i=start+j;const int c=int(i/spatial);
+            double ref=(input[i]-mean)*inv;
+            if(silu){ref=ref*weights[c]+bias[c];ref=ref/(1.+std::exp(-ref));}
+            double actual=half?float(out16[i]):out32[i];
+            if(!std::isfinite(actual)){++nonfinite;continue;}
+            double diff=actual-ref;error+=diff*diff;norm+=ref*ref;max_error=std::fmax(max_error,std::abs(diff));
+        }
+    }
+    const double nrmse=std::sqrt(error/std::fmax(norm,1e-30));
+    std::printf("HTP_NORM_DIAG result side=%d channels=%d half=%d silu=%d constant=%d nrmse=%.8f max_error=%.8f nonfinite=%zu\n",side,channels,half,silu,constant,nrmse,max_error,nonfinite);
+    ggml_backend_buffer_free(buffer);ggml_free(ctx);
+    // F16 SiLU uses the production polynomial approximation, not exact exp.
+    check(!nonfinite && std::isfinite(nrmse) && (norm<1e-20?max_error<0.002:nrmse<0.01),"HTP group norm disagrees with CPU reference");
+}
 int main(int argc, char **argv) {
+    const bool norm_only=argc>1 && std::strcmp(argv[1],"--norm-only")==0;
     const bool conv_only=argc>1 && std::strcmp(argv[1],"--conv-only")==0;
     setvbuf(stdout,nullptr,_IONBF,0); setvbuf(stderr,nullptr,_IONBF,0);
     try {
@@ -133,6 +183,17 @@ int main(int argc, char **argv) {
         check(ggml_backend_reg_dev_count(reg)>0,"No Hexagon device available");
         auto *backend=ggml_backend_dev_init(ggml_backend_reg_dev_get(reg,0),nullptr);
         check(backend,"HTP initialization failed");
+        if(norm_only){
+            for(bool half:{false,true})for(bool silu:{false,true})
+                run_norm_case(backend,32,128,half,silu);
+            run_norm_case(backend,9,32,true,false);
+            run_norm_case(backend,9,32,true,true);
+            run_norm_case(backend,32,128,true,true,true);
+            run_norm_case(backend,512,128,true,true);
+            ggml_backend_free(backend);
+            std::puts("HTP_NORM_DIAG PASS (does not validate full VAE)");
+            return 0;
+        }
         if(conv_only){
             std::puts("HTP_CONV_DIAG stage=vae_direct_conv CPU-reference comparison");
             run_conv_case(backend,8,32,3,3);
@@ -162,6 +223,6 @@ int main(int argc, char **argv) {
         std::printf("FP8_DIAG PASS rss_peak_kib=%ld; system DMA totals unavailable without privileged observability\n",usage.ru_maxrss);
         return 0;
     } catch(const std::exception &e) {
-        std::fprintf(stderr,"%s FAIL %s\n",conv_only?"HTP_CONV_DIAG":"FP8_DIAG",e.what()); return 1;
+        std::fprintf(stderr,"%s FAIL %s\n",norm_only?"HTP_NORM_DIAG":conv_only?"HTP_CONV_DIAG":"FP8_DIAG",e.what()); return 1;
     }
 }
