@@ -56,6 +56,11 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
         create("release") {
             storeFile = file(project.findProperty("RELEASE_STORE_FILE") as String? ?: "keystore.jks")
             storePassword = project.findProperty("RELEASE_STORE_PASSWORD") as String?
