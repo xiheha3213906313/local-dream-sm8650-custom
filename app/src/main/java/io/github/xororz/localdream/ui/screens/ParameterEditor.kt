@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +15,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
@@ -75,7 +75,7 @@ internal fun ExpandedParameter(
     fun between(a: Float, b: Float) = a + (b - a) * fraction
     val width = with(density) { between(source.width, targetWidth.toPx()).toDp() }
     val height = with(density) { between(source.height, targetHeight.toPx()).toDp() }
-    Box(Modifier.fillMaxSize().clickable(onClick = onDismiss).testTag("parameter-editor-scrim"))
+    Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss).testTag("parameter-editor-scrim"))
     Surface(
         modifier = Modifier.offset { androidx.compose.ui.unit.IntOffset(between(source.left, targetLeft).roundToInt(), between(source.top, targetTop).roundToInt()) }
             .size(width, height).testTag("parameter-editor-card"),
@@ -93,7 +93,7 @@ internal fun ExpandedParameter(
             Column(
                 Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(targetWidth, targetHeight)
                     .graphicsLayer { alpha = ((fraction - .35f) / .65f).coerceIn(0f, 1f) }
-                    .clickable {} // The card consumes taps; the scrim is its sibling.
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {} // The card consumes taps; the scrim is its sibling.
                     .verticalScroll(rememberScrollState()),
             ) {
                 Column(Modifier.fillMaxWidth().onSizeChanged { measuredHeight = with(density) { it.height.toDp() } }.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -110,7 +110,7 @@ internal fun ExpandedParameter(
 
 /** The same tile grows upward while its bottom edge stays at its original position. */
 @Composable
-internal fun LiftedParameter(label: String, value: String, source: Rect, open: Boolean, onClosed: () -> Unit) {
+internal fun LiftedParameter(label: String, value: String, source: Rect, open: Boolean, dragDistance: Float = 0f, onClosed: () -> Unit) {
     val density = LocalDensity.current
     val progress = remember { Animatable(0f) }
     LaunchedEffect(open) {
@@ -129,6 +129,7 @@ internal fun LiftedParameter(label: String, value: String, source: Rect, open: B
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
             ParameterSummary(label, value, Modifier.fillMaxWidth().height(with(density) { source.height.toDp() }).testTag("parameter-drag-value"))
+            DragRuler(dragDistance, Modifier.align(Alignment.BottomCenter).padding(horizontal = 8.dp).graphicsLayer { alpha = progress.value })
         }
     }
 }
@@ -152,7 +153,6 @@ internal fun ParameterChoice(label: String, checked: Boolean, onClick: () -> Uni
         border = BorderStroke(if (checked) 2.dp else 1.dp, if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (checked) Icon(Icons.Default.Check, null, Modifier.size(16.dp))
             Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -160,6 +160,7 @@ internal fun ParameterChoice(label: String, checked: Boolean, onClick: () -> Uni
 
 @Composable
 internal fun ParameterNumberInput(label: String, value: String, onValueChange: (String) -> Unit, integer: Boolean, onDone: () -> Unit) {
+    ClearFocusOnImeDismiss()
     // The general Miuix text-field adapter shares its card background; use an explicit outlined
     // container here so editable values remain identifiable in both themes and at large fonts.
     androidx.compose.material3.OutlinedTextField(

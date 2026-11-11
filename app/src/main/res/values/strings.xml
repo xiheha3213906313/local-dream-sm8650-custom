@@ -572,4 +572,7 @@
     <string name="ui_favorited">Favorited</string>
     <string name="ui_view_base">View base image</string>
     <string name="ui_view_reference">View reference image</string>
+    <string name="ui_prompt_expand">Expand prompt</string>
+    <string name="ui_prompt_collapse">Collapse prompt</string>
+    <string name="ui_linked_adjust">Linked adjustment</string>
 </resources>

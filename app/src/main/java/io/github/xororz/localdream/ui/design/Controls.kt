@@ -234,6 +234,7 @@ fun OutlinedTextField(
     shape: Shape = MaterialTheme.shapes.medium,
     colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
 ) {
+    ClearFocusOnImeDismiss()
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         label?.invoke()
         Box(Modifier.fillMaxWidth()) {
@@ -278,6 +279,7 @@ fun OutlinedTextField(
     shape: Shape = MaterialTheme.shapes.medium,
     colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
 ) {
+    ClearFocusOnImeDismiss()
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         label?.invoke()
         Box(Modifier.fillMaxWidth()) {

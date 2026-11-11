@@ -251,13 +251,15 @@ internal fun ControlledPromptTagTextField(
     label: @Composable (() -> Unit),
     modifier: Modifier = Modifier,
     fixedViewport: Boolean = false,
+    labelInOutline: Boolean = false,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val popupVisible =
         autocompleteAvailable && controller.isFocused && !controller.popupDismissed
     androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
         val visibleLines = if (fixedViewport) {
             val lineHeight = with(androidx.compose.ui.platform.LocalDensity.current) { androidx.compose.material3.MaterialTheme.typography.bodyLarge.lineHeight.toDp() }
-            ((maxHeight - 16.dp).value / lineHeight.value).toInt().coerceIn(1, 8)
+            ((maxHeight - 16.dp - bottomInset).value / lineHeight.value).toInt().coerceIn(1, 64)
         } else {
             2
         }
@@ -265,7 +267,9 @@ internal fun ControlledPromptTagTextField(
             value = controller.fieldValue,
             onValueChange = { controller.update(it) },
             modifier = Modifier.fillMaxWidth(),
-            label = { if (!fixedViewport) label() },
+            label = { if (!fixedViewport || labelInOutline) label() },
+            labelInOutline = labelInOutline,
+            bottomInset = bottomInset,
             allowExpand = !fixedViewport,
             fillViewport = fixedViewport,
             maxCollapsedLines = visibleLines,

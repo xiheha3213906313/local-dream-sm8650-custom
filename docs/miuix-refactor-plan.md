@@ -47,3 +47,15 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Use one IME/navigation clearance so the generation action stops at its resting position during keyboard dismissal.
 - [x] 145 checks passed in run `43009222340`, with actual long-list fixtures, four font scales, animation/background pixel checks and IME clearance frames; native screenshots reviewed. Original signing certificate and local APK integrity/alignment/native-library checks passed.
 - [x] Source `e1a027b` pushed and release `sm8650-miuix-v0.14` published. Upload run `43010484540` succeeded; only release/asset metadata checked afterward, no published APK downloads.
+
+## v0.15 feedback
+
+- [x] Disable empty-area press indications and restore the parameter underlay before card return.
+- [x] Add moving, tapered ruler marks and a stationary linked-dimension outline.
+- [x] Scrub common ratios from the lock icon; allow reselection while locked until explicit unlock.
+- [x] Outline-label the positive prompt, expand its existing editor in place, and collapse negatives on positive focus.
+- [x] Clear focus when the IME closes in main-window and dialog inputs.
+- [x] Reorder reference objects with preview-preserving long-drag gestures and edge scrolling.
+- [x] Equal compact result actions, theme-coloured CPU import and category scroll/import reset.
+- [x] Remove automatically prepended choice checkmarks while preserving selection semantics.
+- [ ] Complete native regression, screenshot review, original-certificate build and publication without downloading published APKs.

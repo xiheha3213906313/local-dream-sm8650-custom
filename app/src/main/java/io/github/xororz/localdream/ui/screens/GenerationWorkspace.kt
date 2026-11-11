@@ -1,14 +1,23 @@
 package io.github.xororz.localdream.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -17,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.*
@@ -25,11 +35,14 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.Resolution
 import io.github.xororz.localdream.ui.design.*
@@ -57,6 +70,8 @@ internal fun GenerationWorkspace(
     returnedSeed: Long?,
     aspectLocked: Boolean = false,
     onAspectLockChange: (Boolean) -> Unit = {},
+    lockedRatio: Double? = null,
+    onAspectPresetSelected: (Double) -> Unit = {},
     onAspectRatioSelected: (String) -> Unit,
     onCustomAspectRatioClick: () -> Unit,
     onResolutionSelected: (Resolution) -> Unit,
@@ -77,24 +92,63 @@ internal fun GenerationWorkspace(
     inputs: (@Composable (compact: Boolean) -> Unit)? = null,
     status: String? = null,
     promptFocused: Boolean = false,
+    positiveFocused: Boolean = false,
+    keyboardVisibleOverride: Boolean? = null,
     positiveCount: String = "",
     negativeCount: String = "",
 ) {
     var active by remember { mutableStateOf<String?>(null) }
     var editorOpen by remember { mutableStateOf(false) }
     var dragPreview by remember { mutableStateOf<String?>(null) }
+    var dragDistance by remember { mutableFloatStateOf(0f) }
+    var promptClosingRequested by remember { mutableStateOf(false) }
+    var positiveExpanded by rememberSaveable { mutableStateOf(false) }
+    var positiveBounds by remember { mutableStateOf(Rect.Zero) }
+    var closingRequested by remember { mutableStateOf(false) }
+    var ratioPicker by remember { mutableStateOf(false) }
+    var ratioIndex by remember { mutableIntStateOf(3) }
     var dragging by remember { mutableStateOf<String?>(null) }
     val anchors = remember { mutableStateMapOf<String, Rect>() }
     var origin by remember { mutableStateOf(Offset.Zero) }
     var parametersExpanded by rememberSaveable { mutableStateOf(true) }
     var negativeExpanded by rememberSaveable { mutableStateOf(false) }
     val focus = LocalFocusManager.current
-    val keyboardVisible = keyboardIsVisible()
+    val keyboardVisible = keyboardVisibleOverride ?: keyboardIsVisible()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val ratioTick = with(density) { 32.dp.toPx() }
+    LaunchedEffect(positiveFocused) { if (positiveFocused) negativeExpanded = false }
+    LaunchedEffect(closingRequested, keyboardVisible) {
+        if (closingRequested && !keyboardVisible) {
+            // Let the restored grid take part in layout before the card returns to it.
+            withFrameNanos { }
+            editorOpen = false
+        }
+    }
+    LaunchedEffect(promptClosingRequested, keyboardVisible) {
+        if (promptClosingRequested && !keyboardVisible) {
+            withFrameNanos { }
+            positiveExpanded = false
+            promptClosingRequested = false
+        }
+    }
+    fun collapsePrompt() {
+        focus.clearFocus()
+        keyboard?.hide()
+        promptClosingRequested = true
+    }
     fun finishEdit() {
         focus.clearFocus()
-        editorOpen = false
+        keyboard?.hide()
+        parametersExpanded = true
+        closingRequested = true
     }
     BackHandler(enabled = active != null) { finishEdit() }
+    BackHandler(enabled = positiveExpanded && active == null && !keyboardVisible) { collapsePrompt() }
+    val promptProgress = remember { Animatable(0f) }
+    LaunchedEffect(positiveExpanded) { promptProgress.animateTo(if (positiveExpanded) 1f else 0f, tween(220, easing = CubicBezierEasing(.2f, 0f, 0f, 1f))) }
+    val linkedDescription = stringResource(R.string.ui_linked_adjust)
     val fields = mutableListOf<WorkspaceParameter>()
     fun field(id: String, label: String, value: String, enabled: Boolean = true) {
         fields += WorkspaceParameter(id, label, value, enabled)
@@ -156,10 +210,14 @@ internal fun GenerationWorkspace(
     }
     BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
         val compact = maxHeight < 420.dp || keyboardVisible
-        val showParameters = parametersExpanded && !compact && !promptFocused
+        val showParameters = parametersExpanded && ((!compact && !promptFocused) || (active != null && !keyboardVisible))
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp).testTag("generation-workspace"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (inputs != null) Box(Modifier.fillMaxWidth().testTag("workspace-image-inputs")) { inputs(compact) }
-            PromptRegion(stringResource(R.string.ui_positive_short), positiveCount, Modifier.weight(1f, fill = false).heightIn(max = 192.dp), positive)
+            if (inputs != null && (!keyboardVisible || active != null)) Box(Modifier.fillMaxWidth().testTag("workspace-image-inputs")) { inputs(compact) }
+            Box(
+                Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 192.dp).fillMaxHeight().onGloballyPositioned {
+                    positiveBounds = Rect(it.positionInWindow() - origin, Size(it.size.width.toFloat(), it.size.height.toFloat()))
+                }.testTag("positive-prompt-slot"),
+            )
             // Independent prompt section directly below the positive prompt, outside the parameters.
             Column(Modifier.fillMaxWidth().testTag("negative-prompt-section"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
@@ -195,31 +253,66 @@ internal fun GenerationWorkspace(
                             row.forEachIndexed { index, field ->
                                 ParameterCell(
                                     field,
-                                    Modifier.weight(1f).onGloballyPositioned { coordinates ->
+                                    Modifier.weight(1f).then(
+                                        if (aspectLocked && ((dragPreview == "width" && field.id == "height") || (dragPreview == "height" && field.id == "width"))) {
+                                            Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), RoundedCornerShape(24.dp)).semantics { stateDescription = linkedDescription }
+                                        } else {
+                                            Modifier
+                                        },
+                                    ).onGloballyPositioned { coordinates ->
                                         val top = coordinates.positionInWindow() - origin
                                         anchors[field.id] = Rect(top, androidx.compose.ui.geometry.Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
                                     }.graphicsLayer { alpha = if (active == field.id || dragPreview == field.id) 0f else 1f },
                                     onAdjust = { ticks -> adjust(field.id, ticks) },
                                     onDragging = {
                                         dragging = if (it) field.id else null
-                                        if (it) dragPreview = field.id
+                                        if (it) {
+                                            dragPreview = field.id
+                                            dragDistance = 0f
+                                        }
                                     },
+                                    onDistance = { dragDistance = it },
                                 ) {
                                     focus.clearFocus()
                                     active = field.id
+                                    closingRequested = false
                                     editorOpen = true
                                 }
                                 if (row.first().id == "width" && index == 0 && isDit) {
-                                    CompositionLocalProvider(androidx.compose.material3.LocalMinimumInteractiveComponentSize provides 0.dp) {
-                                        androidx.compose.material3.IconToggleButton(
-                                            checked = aspectLocked,
-                                            onCheckedChange = onAspectLockChange,
-                                            enabled = !isRunning,
-                                            modifier = Modifier.size(36.dp).testTag("aspect-ratio-lock"),
-                                        ) {
-                                            Icon(if (aspectLocked) Icons.Default.Lock else Icons.Default.LockOpen, stringResource(if (aspectLocked) R.string.ui_unlock_aspect else R.string.ui_lock_aspect), Modifier.size(20.dp))
-                                        }
+                                    val chooseRatio: (Int) -> Unit = { value ->
+                                        val next = value.coerceIn(CommonAspectRatios.indices)
+                                        if (next != ratioIndex) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        ratioIndex = next
+                                        onAspectPresetSelected(CommonAspectRatios[next].second)
                                     }
+                                    var initialRatio by remember { mutableIntStateOf(3) }
+                                    Box(
+                                        Modifier.size(36.dp).onGloballyPositioned { anchors["aspect-lock"] = Rect(it.positionInWindow() - origin, Size(it.size.width.toFloat(), it.size.height.toFloat())) }
+                                            .scrubGesture("aspect-lock", !isRunning, { onAspectLockChange(!aspectLocked) }, {
+                                                ratioIndex = CommonAspectRatios.indices.minBy { kotlin.math.abs(CommonAspectRatios[it].second - (lockedRatio ?: currentWidth.toDouble() / currentHeight)) }
+                                                initialRatio = ratioIndex
+                                                ratioPicker = true
+                                                onAspectPresetSelected(CommonAspectRatios[ratioIndex].second)
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            }, { distance -> chooseRatio(initialRatio + (distance / ratioTick).toInt()) }, { ratioPicker = false })
+                                            .testTag("aspect-ratio-lock").semantics {
+                                                role = Role.Checkbox
+                                                toggleableState = if (aspectLocked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off
+                                                if (!isRunning) {
+                                                    onClick {
+                                                        onAspectLockChange(!aspectLocked)
+                                                        true
+                                                    }
+                                                    onLongClick {
+                                                        ratioPicker = true
+                                                        true
+                                                    }
+                                                } else {
+                                                    disabled()
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) { Icon(if (aspectLocked) Icons.Default.Lock else Icons.Default.LockOpen, stringResource(if (aspectLocked) R.string.ui_unlock_aspect else R.string.ui_lock_aspect), Modifier.size(20.dp)) }
                                 }
                             }
                             if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -229,13 +322,39 @@ internal fun GenerationWorkspace(
             }
             if (status != null) Text(status, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        // One editor instance stays mounted while its edges expand from the normal slot.
+        if (positiveBounds.width > 0 && positiveBounds.height > 0) {
+            val f = promptProgress.value
+            val end = with(density) { Rect(16.dp.toPx(), 6.dp.toPx(), maxWidth.toPx() - 16.dp.toPx(), maxHeight.toPx() - 6.dp.toPx()) }
+            fun edge(a: Float, b: Float) = a + (b - a) * f
+            val left = edge(positiveBounds.left, end.left)
+            val top = edge(positiveBounds.top, end.top)
+            val width = edge(positiveBounds.width, end.width)
+            val height = edge(positiveBounds.height, end.height)
+            Box(
+                Modifier.offset { IntOffset(left.roundToInt(), top.roundToInt()) }.size(with(density) { width.toDp() }, with(density) { height.toDp() })
+                    .zIndex(if (f > 0f) 3f else 0f).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp)).testTag("positive-prompt-editor").semantics { if (positiveCount.isNotBlank()) stateDescription = positiveCount },
+            ) {
+                positive()
+                if (positiveCount.isNotBlank()) Text(positiveCount, Modifier.align(Alignment.TopEnd).padding(end = 12.dp).background(MaterialTheme.colorScheme.surface), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                IconButton(onClick = {
+                    negativeExpanded = false
+                    if (positiveExpanded) collapsePrompt() else positiveExpanded = true
+                }, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(36.dp).testTag("positive-prompt-expand")) {
+                    Icon(if (positiveExpanded) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull, stringResource(if (positiveExpanded) R.string.ui_prompt_collapse else R.string.ui_prompt_expand), Modifier.size(20.dp))
+                }
+            }
+        }
         val selected = fields.firstOrNull { it.id == active }
         val source = anchors[active]
         if (selected != null && source != null) {
             ExpandedParameter(
                 selected.label, selected.value, source, maxWidth, maxHeight,
                 if (active == "seed" || active == "scheduler") 390.dp else 300.dp,
-                editorOpen, ::finishEdit, { active = null },
+                editorOpen, ::finishEdit, {
+                    active = null
+                    closingRequested = false
+                },
             ) {
                 when (active) {
                     "width" -> if (isDit || runOnCpu) {
@@ -308,70 +427,42 @@ internal fun GenerationWorkspace(
         }
         val lifted = fields.firstOrNull { it.id == dragPreview }
         val liftSource = anchors[dragPreview]
-        if (lifted != null && liftSource != null) LiftedParameter(lifted.label, lifted.value, liftSource, dragging == dragPreview) { dragPreview = null }
-    }
-}
-
-@Composable
-private fun PromptRegion(title: String, count: String, modifier: Modifier, content: @Composable () -> Unit) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
-            if (count.isNotBlank()) Text(count, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        if (lifted != null && liftSource != null) LiftedParameter(lifted.label, lifted.value, liftSource, dragging == dragPreview, dragDistance) { dragPreview = null }
+        if (ratioPicker) {
+            anchors["aspect-lock"]?.let { source ->
+                AspectRatioPicker(source, maxWidth, ratioIndex) { index ->
+                    ratioIndex = index
+                    onAspectPresetSelected(CommonAspectRatios[index].second)
+                    ratioPicker = false
+                }
+            }
         }
-        Box(Modifier.fillMaxWidth().weight(1f).testTag("positive-prompt-editor"), contentAlignment = Alignment.TopStart) { content() }
     }
 }
 
 private data class WorkspaceParameter(val id: String, val label: String, val value: String, val enabled: Boolean)
 
 @Composable
-private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjust: (Int) -> Unit, onDragging: (Boolean) -> Unit, onClick: () -> Unit) {
-    val latestAdjust by rememberUpdatedState(onAdjust)
+private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjust: (Int) -> Unit, onDragging: (Boolean) -> Unit, onDistance: (Float) -> Unit, onClick: () -> Unit) {
     val latestClick by rememberUpdatedState(onClick)
-    val latestDragging by rememberUpdatedState(onDragging)
     val haptic = LocalHapticFeedback.current
     val tickPixels = with(LocalDensity.current) { 12.dp.toPx() }
-    val gesture = if (field.enabled) {
-        Modifier.pointerInput(field.id, tickPixels) {
-            awaitEachGesture {
-                val down = awaitFirstDown()
-                down.consume()
-                val release = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { true to waitForUpOrCancellation() }
-                if (release != null) {
-                    val up = release.second
-                    if (up != null && (up.position - down.position).getDistance() <= viewConfiguration.touchSlop) {
-                        up.consume()
-                        latestClick()
-                    }
-                } else {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    latestDragging(true)
-                    // Keep a single starting value for the gesture, even if several pointer
-                    // events arrive before Compose has drawn the next frame.
-                    val adjustFromStart = latestAdjust
-                    var distance = 0f
-                    var previousTicks = 0
-                    try {
-                        horizontalDrag(down.id) { change ->
-                            distance += change.positionChange().x
-                            val ticks = (distance / tickPixels).toInt()
-                            if (ticks != previousTicks) {
-                                adjustFromStart(ticks)
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                previousTicks = ticks
-                            }
-                            change.consume()
-                        }
-                    } finally {
-                        latestDragging(false)
-                    }
-                }
-            }
+    var adjustFromStart by remember { mutableStateOf<(Int) -> Unit>({}) }
+    var previousTicks by remember { mutableIntStateOf(0) }
+    val gesture = Modifier.scrubGesture(field.id, field.enabled, onClick, {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        onDragging(true)
+        adjustFromStart = onAdjust
+        previousTicks = 0
+    }, { distance ->
+        onDistance(distance)
+        val ticks = (distance / tickPixels).toInt()
+        if (ticks != previousTicks) {
+            adjustFromStart(ticks)
+            previousTicks = ticks
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
-    } else {
-        Modifier
-    }
+    }, { onDragging(false) })
     Card(
         modifier.then(gesture).testTag("parameter-${field.id}").semantics(mergeDescendants = true) {
             role = Role.Button

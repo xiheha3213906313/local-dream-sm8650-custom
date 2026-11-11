@@ -45,7 +45,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         fun fonts() = listOf(arrayOf(1.0f), arrayOf(1.3f), arrayOf(1.5f), arrayOf(2.0f))
     }
 
-    private fun show(dark: Boolean = false, haptics: androidx.compose.ui.hapticfeedback.HapticFeedback? = null, content: @androidx.compose.runtime.Composable () -> Unit) {
+    private fun show(dark: Boolean = false, haptics: androidx.compose.ui.hapticfeedback.HapticFeedback? = null, imeVisible: (() -> Boolean)? = null, content: @androidx.compose.runtime.Composable () -> Unit) {
         val application = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         listOf(application.resources, compose.activity.resources).distinct().forEach { resources ->
             val config = android.content.res.Configuration(resources.configuration).apply { fontScale = scale }
@@ -53,10 +53,12 @@ class LargeFontLayoutTest(private val scale: Float) {
             resources.updateConfiguration(config, resources.displayMetrics)
         }
         compose.setContent {
-            LocalDreamTheme(ThemeState(dynamicColor = false, darkMode = if (dark) DarkModePreference.DARK else DarkModePreference.LIGHT)) {
-                val density = LocalDensity.current
-                val controller = androidx.compose.runtime.remember { ThemeController(ThemeState(dynamicColor = false)) {} }
-                CompositionLocalProvider(LocalDensity provides Density(density.density, scale), LocalThemeController provides controller, androidx.compose.ui.platform.LocalHapticFeedback provides (haptics ?: androidx.compose.ui.platform.LocalHapticFeedback.current)) { content() }
+            CompositionLocalProvider(LocalImeVisibleOverride provides imeVisible?.invoke()) {
+                LocalDreamTheme(ThemeState(dynamicColor = false, darkMode = if (dark) DarkModePreference.DARK else DarkModePreference.LIGHT)) {
+                    val density = LocalDensity.current
+                    val controller = androidx.compose.runtime.remember { ThemeController(ThemeState(dynamicColor = false)) {} }
+                    CompositionLocalProvider(LocalDensity provides Density(density.density, scale), LocalThemeController provides controller, androidx.compose.ui.platform.LocalHapticFeedback provides (haptics ?: androidx.compose.ui.platform.LocalHapticFeedback.current)) { content() }
+                }
             }
         }
     }
@@ -520,6 +522,240 @@ class LargeFontLayoutTest(private val scale: Float) {
         assertEquals("Opening a parameter card dimmed the workspace", pixel("v014-card-background-before"), pixel("v014-card-background-open"))
     }
 
+    private fun screenshotPixels(name: String, rect: androidx.compose.ui.geometry.Rect): IntArray {
+        val file = File(System.getProperty("ui.screenshots.dir", "/tmp/miuix-screenshots"), "$name-$scale.png")
+        val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+        val width = rect.width.toInt().coerceAtLeast(1)
+        val height = rect.height.toInt().coerceAtLeast(1)
+        return IntArray(width * height).also {
+            bitmap.getPixels(it, 0, width, rect.left.toInt(), rect.top.toInt(), width, height)
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun pressingOutsideParameterCardDoesNotTintTheWorkspace() {
+        show { SampleWorkspace() }
+        compose.onNodeWithTag("parameter-width").performClick()
+        val area = compose.onNodeWithTag("parameter-editor-scrim").fetchSemanticsNode().boundsInRoot
+        val sample = androidx.compose.ui.geometry.Rect(area.left + 2, area.top + 2, area.left + 14, area.top + 14)
+        capture("v015-outside-rest")
+        compose.onNodeWithTag("parameter-editor-scrim").performTouchInput {
+            down(Offset(4f, 4f))
+            advanceEventTime(80)
+        }
+        capture("v015-outside-pressed")
+        assertArrayEquals("Pressing empty workspace painted a dark ripple", screenshotPixels("v015-outside-rest", sample), screenshotPixels("v015-outside-pressed", sample))
+        compose.onNodeWithTag("parameter-editor-scrim").performTouchInput { up() }
+    }
+
+    @Test fun closingParameterCardWaitsForImeAndRestoresUnderlayBeforeShrinking() {
+        var ime by androidx.compose.runtime.mutableStateOf(false)
+        show(imeVisible = { ime }) { SampleWorkspace() }
+        compose.onNodeWithTag("parameter-width").performClick()
+        compose.onNodeWithTag("parameter-number-input").performClick()
+        compose.runOnIdle { ime = true }
+        compose.onNodeWithTag("parameter-cfg").assertDoesNotExist()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithContentDescription("返回提示词").performClick()
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(240)
+        compose.onNodeWithTag("parameter-editor-card").assertIsDisplayed()
+        compose.runOnIdle { ime = false }
+        repeat(4) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.onNodeWithTag("parameter-cfg").assertIsDisplayed()
+        compose.onNodeWithTag("parameter-editor-card").assertIsDisplayed()
+        capture("v015-card-return-underlay")
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("parameter-editor-card").assertDoesNotExist()
+        compose.onNodeWithTag("parameter-cfg").assertIsDisplayed()
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun holdingLockCanChangePresetsAgainWithoutUnlocking() {
+        show { SampleWorkspace() }
+        fun choose(distance: Float) {
+            compose.onNodeWithTag("aspect-ratio-lock").performTouchInput {
+                down(center)
+                advanceEventTime(700)
+                moveBy(Offset(distance, 0f), delayMillis = 100)
+            }
+            compose.onNodeWithTag("aspect-ratio-picker").assertIsDisplayed()
+            capture("v015-ratio-picker")
+            compose.onNodeWithTag("aspect-ratio-lock").performTouchInput { up() }
+            compose.onNodeWithTag("aspect-ratio-lock").assertIsOn()
+        }
+        choose(32f)
+        compose.onNodeWithTag("parameter-width").assertTextContains("704")
+        compose.onNodeWithTag("parameter-height").assertTextContains("512")
+        choose(32f)
+        compose.onNodeWithTag("parameter-width").assertTextContains("768")
+        compose.onNodeWithTag("parameter-height").assertTextContains("512")
+        compose.onNodeWithTag("aspect-ratio-lock").performClick().assertIsOff()
+    }
+
+    @Test fun lockedDimensionPartnerOnlyGetsAnOutlineWhileDragging() {
+        show { SampleWorkspace() }
+        compose.onNodeWithTag("aspect-ratio-lock").performClick()
+        val before = compose.onNodeWithTag("parameter-height").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("parameter-width").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(36f, 0f), delayMillis = 100)
+        }
+        val after = compose.onNodeWithTag("parameter-height").fetchSemanticsNode().boundsInRoot
+        assertEquals(before.height, after.height, 1f)
+        compose.onNodeWithTag("parameter-height").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "联动调节"))
+        compose.onAllNodesWithTag("parameter-drag-preview").assertCountEquals(1)
+        capture("v015-linked-outline-ruler")
+        compose.onNodeWithTag("parameter-width").performTouchInput { up() }
+    }
+
+    @Test fun dragRulerMovesEvenBetweenValueTicks() {
+        show { SampleWorkspace() }
+        compose.onNodeWithTag("parameter-width").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(3f, 0f), delayMillis = 100)
+        }
+        val ruler = compose.onNodeWithTag("drag-ruler").fetchSemanticsNode().boundsInRoot
+        capture("v015-ruler-before")
+        compose.onNodeWithTag("parameter-width").performTouchInput { moveBy(Offset(4f, 0f), delayMillis = 100) }
+        capture("v015-ruler-after")
+        assertFalse("The ruler marks did not move with the finger", screenshotPixels("v015-ruler-before", ruler).contentEquals(screenshotPixels("v015-ruler-after", ruler)))
+        compose.onNodeWithTag("parameter-width").performTouchInput { up() }
+    }
+
+    @Test fun focusingPositivePromptCollapsesNegativeWithoutRestoringItOnImeClose() {
+        var ime by androidx.compose.runtime.mutableStateOf(false)
+        show(imeVisible = { ime }) { SampleWorkspace() }
+        compose.onNodeWithTag("negative-prompt-toggle").performClick()
+        compose.onNodeWithTag("negative-prompt-editor").assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("positive-prompt-editor"))).performClick()
+        compose.runOnIdle { ime = true }
+        compose.onNodeWithTag("negative-prompt-editor").assertDoesNotExist()
+        compose.runOnIdle { ime = false }
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("positive-prompt-editor"))).assertIsNotFocused()
+        compose.onNodeWithTag("negative-prompt-editor").assertDoesNotExist()
+    }
+
+    @Test fun positivePromptExpandsFromItsOwnEdgesAndKeepsText() {
+        show { SampleWorkspace() }
+        val original = compose.onNodeWithTag("positive-prompt-editor").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("positive-prompt-expand").performClick()
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(64)
+        val middle = compose.onNodeWithTag("positive-prompt-editor").fetchSemanticsNode().boundsInRoot
+        assertTrue(middle.height > original.height)
+        capture("v015-prompt-expand-middle")
+        compose.mainClock.advanceTimeBy(300)
+        val full = compose.onNodeWithTag("positive-prompt-editor").fetchSemanticsNode().boundsInRoot
+        assertTrue(full.height > middle.height)
+        compose.onNode(hasSetTextAction()).performTextInput(", soft lighting")
+        capture("v015-prompt-expanded")
+        compose.onNodeWithTag("positive-prompt-expand").performClick()
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(300)
+        compose.onNode(hasSetTextAction()).assertTextContains("soft lighting", substring = true)
+        val restored = compose.onNodeWithTag("positive-prompt-editor").fetchSemanticsNode().boundsInRoot
+        assertEquals(original.height, restored.height, 1f)
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun keyboardDismissClearsFocusInsideDialogFieldsToo() {
+        var ime by androidx.compose.runtime.mutableStateOf(false)
+        var value by androidx.compose.runtime.mutableStateOf("")
+        show(imeVisible = { ime }) {
+            androidx.compose.material3.AlertDialog(onDismissRequest = {}, confirmButton = {}, text = { OutlinedTextField(value, { value = it }) })
+        }
+        compose.onNode(hasSetTextAction()).performClick().assertIsFocused()
+        compose.runOnIdle { ime = true }
+        compose.runOnIdle { ime = false }
+        compose.onNode(hasSetTextAction()).assertIsNotFocused()
+    }
+
+    @Test fun referenceDraggingChangesStableItemOrderAndRetainsClickPreview() {
+        val values = androidx.compose.runtime.mutableStateListOf("A", "B", "C", "D")
+        var preview = ""
+        show {
+            ReorderableReferenceRow(values, { it }, true, { from, to -> values.add(to, values.removeAt(from)) }) { value, _, modifier ->
+                Card(onClick = { preview = value }, modifier = modifier.size(64.dp).testTag("reference-$value")) { Text(value) }
+            }
+        }
+        compose.onNodeWithText("A").performClick()
+        compose.runOnIdle { assertEquals("A", preview) }
+        val first = compose.onNodeWithTag("reference-A").fetchSemanticsNode().boundsInRoot.center
+        compose.onNodeWithTag("reference-image-strip").performTouchInput {
+            down(first)
+            advanceEventTime(700)
+            moveBy(Offset(80f, 0f), delayMillis = 100)
+        }
+        compose.runOnIdle { assertEquals(listOf("B", "A", "C", "D"), values.toList()) }
+        compose.onNodeWithTag("reference-image-strip").performTouchInput { moveBy(Offset(72f, 0f), delayMillis = 100) }
+        compose.runOnIdle { assertEquals(listOf("B", "C", "A", "D"), values.toList()) }
+        compose.onNodeWithTag("reference-image-strip").performTouchInput { up() }
+        capture("v015-reference-order")
+    }
+
+    @Test fun switchingModelTabsResetsScrollAndHidesImportAgain() {
+        val dirs = openLibrary()
+        try {
+            compose.onNodeWithTag("model-library-list").performTouchInput { swipeDown() }
+            compose.onNodeWithTag("model-import-entry").assertIsDisplayed()
+            repeat(3) { compose.onNodeWithTag("model-library-list").performTouchInput { swipeUp() } }
+            compose.onNodeWithText("NPU").performClick()
+            compose.onNodeWithText("CPU").performClick()
+            compose.onNodeWithTag("model-import-entry").assertDoesNotExist()
+            compose.onNodeWithText("ui_scroll_00").assertIsDisplayed()
+            capture("v015-library-reset")
+        } finally {
+            dirs.forEach { it.deleteRecursively() }
+        }
+    }
+
+    @Test fun selectedChoicesKeepTheSameTextPositionWithoutPrefixMarks() {
+        var first by androidx.compose.runtime.mutableStateOf(false)
+        var second by androidx.compose.runtime.mutableStateOf(false)
+        show {
+            Column {
+                ChoiceControl("筛选选项", { first = !first }, checked = first)
+                ParameterChoice("Euler A", second, { second = !second })
+            }
+        }
+        listOf("筛选选项", "Euler A").forEach { label ->
+            val before = compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot
+            compose.onNodeWithText(label).performClick().assertIsSelected()
+            val after = compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot
+            assertEquals("Selection inserted a prefix mark", before.width, after.width, 1f)
+        }
+        capture("v015-selected-without-checkmarks")
+    }
+
+    @Test fun cpuImportUsesThemeAccentAndStaysCompact() {
+        var accent = androidx.compose.ui.graphics.Color.Unspecified
+        show {
+            accent = MaterialTheme.colorScheme.primary
+            AddCustomModelButton({}, Modifier.testTag("cpu-import"))
+        }
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText("导入模型", useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals(accent, layouts.first().layoutInput.style.color)
+        val bounds = compose.onNodeWithTag("cpu-import").getUnclippedBoundsInRoot()
+        assertEquals(52.dp, bounds.bottom - bounds.top)
+    }
+
     @Test fun modelTabsFillTheAvailableRow() {
         show { ModelFormatTabs(0, {}) }
         val first = compose.onNodeWithTag("model-format-0").fetchSemanticsNode().boundsInRoot
@@ -553,7 +789,14 @@ class LargeFontLayoutTest(private val scale: Float) {
                 GenerationWorkspace(
                     isSdxl = false, isDit = !cpuRuntime, runOnCpu = cpuRuntime, useImg2img = true, isRunning = false,
                     aspectRatio = "1:1", availableResolutions = emptyList(), currentWidth = width.toInt(), currentHeight = height.toInt(),
-                    aspectLocked = locked, onAspectLockChange = {
+                    aspectLocked = locked, lockedRatio = if (locked) ratio else null,
+                    onAspectPresetSelected = {
+                        ratio = it
+                        locked = true
+                        val pair = DitResolution.lockedSize(width, ratio, true)
+                        width = pair.first.toFloat()
+                        height = pair.second.toFloat()
+                    }, onAspectLockChange = {
                         ratio = width.toDouble() / height
                         locked = it
                     },
@@ -581,7 +824,8 @@ class LargeFontLayoutTest(private val scale: Float) {
                     onCpuSelected = { openCL = false }, onGpuSelected = { openCL = true }, onBatchCountsChange = {}, onDenoiseStrengthChange = {},
                     onSeedChange = { seed = it }, onUseLastSeed = { seed = "123" },
                     promptFocused = positive.isFocused || negative.isFocused,
-                    positive = { ControlledPromptTagTextField(positive, false, {}, fixedViewport = true) },
+                    positiveFocused = positive.isFocused,
+                    positive = { ControlledPromptTagTextField(positive, false, { Text("正向提示词", style = MaterialTheme.typography.labelSmall) }, fixedViewport = true, labelInOutline = true, bottomInset = 36.dp) },
                     negative = { ControlledPromptTagTextField(negative, false, {}, fixedViewport = true) },
                     inputs = { _ -> ImageInputActions({}, {}) },
                 )
@@ -600,6 +844,11 @@ class LargeFontLayoutTest(private val scale: Float) {
                     ModelRunResultPage(bitmap, 1, params, emptyList(), false, true, true, true, true, {}, {}, favorite, { favorite = !favorite }, {}, {}, {}, { saved = it === bitmap }, {}, {}, {}, {})
                 }
             }
+        }
+        val actionBounds = listOf("result-save", "result-favorite", "result-upscale").map { compose.onNodeWithTag(it).getUnclippedBoundsInRoot() }
+        actionBounds.forEach {
+            assertEquals((actionBounds.first().right - actionBounds.first().left).value, (it.right - it.left).value, 1f)
+            assertEquals(44.dp, it.bottom - it.top)
         }
         compose.onNodeWithText("导入图片").assertDoesNotExist()
         compose.onNodeWithTag("result-favorite").assertTextContains("收藏").performClick().assertIsSelected()

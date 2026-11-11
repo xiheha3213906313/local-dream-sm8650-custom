@@ -31,7 +31,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -2150,198 +2149,192 @@ fun ModelRunScreen(
                         .fillMaxWidth()
                         .padding(vertical = 2.dp),
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Start,
-                    ) {
-                        if (selectedImageUri != null) {
-                            PreviewableInputCard(
-                                bitmap = croppedBitmap,
-                                label = stringResource(R.string.ui_view_base),
-                                onPreview = { inputPreview = it },
-                                modifier = Modifier.size(64.dp).testTag("base-image-thumbnail"),
-                            ) {
-                                Box {
-                                    croppedBitmap?.let { bitmap ->
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(
-                                                LocalContext.current,
-                                            )
-                                                .data(bitmap)
-                                                .crossfade(true)
-                                                .build(),
-                                            contentDescription = "Cropped Image",
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    } ?: selectedImageUri?.let { uri ->
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(
-                                                LocalContext.current,
-                                            )
-                                                .data(uri)
-                                                .crossfade(true)
-                                                .build(),
-                                            contentDescription = "Selected Image",
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            if (supportsReferenceEditing) {
-                                                clearBaseImageState()
-                                            } else {
-                                                clearImg2imgState()
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .background(
-                                                color = MaterialTheme.colorScheme.surface.copy(
-                                                    alpha = 0.7f,
-                                                ),
-                                                shape = CircleShape,
-                                            )
-                                            .align(Alignment.TopEnd),
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Clear,
-                                            contentDescription = "Remove Image",
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
-                                    // The base image is always reference 1.
-                                    if (supportsReferenceEditing) {
-                                        Text(
-                                            "1",
-                                            modifier = Modifier
-                                                .align(Alignment.BottomStart)
-                                                .background(
-                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
-                                                    CircleShape,
-                                                )
-                                                .padding(horizontal = 7.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelMedium,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        AnimatedVisibility(
-                            visible = selectedImageUri != null && isInpaintMode && maskBitmap != null,
-                            enter = fadeIn() + expandHorizontally(),
-                            exit = fadeOut() + shrinkHorizontally(),
-                        ) {
+                    ReorderableReferenceRow(
+                        items = if (supportsReferenceEditing) editReferenceImages else emptyList(),
+                        itemKey = { it.uri.toString() },
+                        enabled = !isRunning,
+                        onMove = { from, to -> editReferenceImages.add(to, editReferenceImages.removeAt(from)) },
+                        hasLeading = selectedImageUri != null,
+                        leading = {
                             Row {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Card(
-                                    onClick = {
-                                        if (croppedBitmap != null && maskBitmap != null) {
-                                            showInpaintScreen = true
+                                if (selectedImageUri != null) {
+                                    PreviewableInputCard(
+                                        bitmap = croppedBitmap,
+                                        label = stringResource(R.string.ui_view_base),
+                                        onPreview = { inputPreview = it },
+                                        modifier = Modifier.size(64.dp).testTag("base-image-thumbnail"),
+                                    ) {
+                                        Box {
+                                            croppedBitmap?.let { bitmap ->
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(
+                                                        LocalContext.current,
+                                                    )
+                                                        .data(bitmap)
+                                                        .crossfade(true)
+                                                        .build(),
+                                                    contentDescription = "Cropped Image",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                            } ?: selectedImageUri?.let { uri ->
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(
+                                                        LocalContext.current,
+                                                    )
+                                                        .data(uri)
+                                                        .crossfade(true)
+                                                        .build(),
+                                                    contentDescription = "Selected Image",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    if (supportsReferenceEditing) {
+                                                        clearBaseImageState()
+                                                    } else {
+                                                        clearImg2imgState()
+                                                    }
+                                                },
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .background(
+                                                        color = MaterialTheme.colorScheme.surface.copy(
+                                                            alpha = 0.7f,
+                                                        ),
+                                                        shape = CircleShape,
+                                                    )
+                                                    .align(Alignment.TopEnd),
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Clear,
+                                                    contentDescription = "Remove Image",
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            }
+                                            // The base image is always reference 1.
+                                            if (supportsReferenceEditing) {
+                                                Text(
+                                                    "1",
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomStart)
+                                                        .background(
+                                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                                            CircleShape,
+                                                        )
+                                                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                )
+                                            }
                                         }
-                                    },
-                                    modifier = Modifier.size(64.dp),
-                                    shape = MaterialTheme.shapes.small,
+                                    }
+                                }
+
+                                AnimatedVisibility(
+                                    visible = selectedImageUri != null && isInpaintMode && maskBitmap != null,
+                                    enter = fadeIn() + expandHorizontally(),
+                                    exit = fadeOut() + shrinkHorizontally(),
                                 ) {
-                                    Box {
-                                        maskBitmap?.let { mb ->
-                                            AsyncImage(
-                                                model = ImageRequest.Builder(
-                                                    LocalContext.current,
-                                                )
-                                                    .data(mb)
-                                                    .crossfade(true)
-                                                    .build(),
-                                                contentDescription = "Mask Image",
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
-                                        }
-                                        IconButton(
+                                    Row {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Card(
                                             onClick = {
-                                                maskBitmap = null
-                                                isInpaintMode = false
-                                                savedPathHistory = null
+                                                if (croppedBitmap != null && maskBitmap != null) {
+                                                    showInpaintScreen = true
+                                                }
                                             },
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .background(
-                                                    color = MaterialTheme.colorScheme.surface.copy(
-                                                        alpha = 0.7f,
-                                                    ),
-                                                    shape = CircleShape,
-                                                )
-                                                .align(Alignment.TopEnd),
+                                            modifier = Modifier.size(64.dp),
+                                            shape = MaterialTheme.shapes.small,
                                         ) {
-                                            Icon(
-                                                Icons.Default.Clear,
-                                                contentDescription = "Clear Mask",
-                                                modifier = Modifier.size(16.dp),
-                                            )
+                                            Box {
+                                                maskBitmap?.let { mb ->
+                                                    AsyncImage(
+                                                        model = ImageRequest.Builder(
+                                                            LocalContext.current,
+                                                        )
+                                                            .data(mb)
+                                                            .crossfade(true)
+                                                            .build(),
+                                                        contentDescription = "Mask Image",
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        maskBitmap = null
+                                                        isInpaintMode = false
+                                                        savedPathHistory = null
+                                                    },
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .background(
+                                                            color = MaterialTheme.colorScheme.surface.copy(
+                                                                alpha = 0.7f,
+                                                            ),
+                                                            shape = CircleShape,
+                                                        )
+                                                        .align(Alignment.TopEnd),
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Clear,
+                                                        contentDescription = "Clear Mask",
+                                                        modifier = Modifier.size(16.dp),
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-
-                        if (supportsReferenceEditing) {
-                            // The base image is always reference 1, so the
-                            // user's references are numbered after it.
-                            val firstNumber = if (selectedImageUri != null) 2 else 1
-                            editReferenceImages.forEachIndexed { index, reference ->
-                                if (index > 0 || selectedImageUri != null) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                PreviewableInputCard(
-                                    bitmap = reference.bitmap,
-                                    label = stringResource(R.string.ui_view_reference),
-                                    onPreview = { inputPreview = it },
-                                    modifier = Modifier.size(64.dp).testTag("reference-image-thumbnail-$index"),
+                        },
+                    ) { reference, index, thumbnailModifier ->
+                        val firstNumber = if (selectedImageUri != null) 2 else 1
+                        PreviewableInputCard(
+                            bitmap = reference.bitmap,
+                            label = stringResource(R.string.ui_view_reference),
+                            onPreview = { inputPreview = it },
+                            modifier = thumbnailModifier.size(64.dp).testTag("reference-image-thumbnail-$index"),
+                        ) {
+                            Box {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(reference.bitmap)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = "Reference image ${firstNumber + index}",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                IconButton(
+                                    onClick = { removeEditReference(index) },
+                                    enabled = !isRunning,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surface.copy(
+                                                alpha = 0.7f,
+                                            ),
+                                            shape = CircleShape,
+                                        )
+                                        .align(Alignment.TopEnd),
                                 ) {
-                                    Box {
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(LocalContext.current)
-                                                .data(reference.bitmap)
-                                                .crossfade(true)
-                                                .build(),
-                                            contentDescription = "Reference image ${firstNumber + index}",
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop,
-                                        )
-                                        IconButton(
-                                            onClick = { removeEditReference(index) },
-                                            enabled = !isRunning,
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .background(
-                                                    color = MaterialTheme.colorScheme.surface.copy(
-                                                        alpha = 0.7f,
-                                                    ),
-                                                    shape = CircleShape,
-                                                )
-                                                .align(Alignment.TopEnd),
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Clear,
-                                                contentDescription = "Remove reference image",
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                        }
-                                        Text(
-                                            "${firstNumber + index}",
-                                            modifier = Modifier
-                                                .align(Alignment.BottomStart)
-                                                .background(
-                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
-                                                    CircleShape,
-                                                )
-                                                .padding(horizontal = 7.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelMedium,
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Default.Clear,
+                                        contentDescription = "Remove reference image",
+                                        modifier = Modifier.size(16.dp),
+                                    )
                                 }
+                                Text(
+                                    "${firstNumber + index}",
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .background(
+                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                            CircleShape,
+                                        )
+                                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
                             }
                         }
                     }
@@ -2358,6 +2351,16 @@ fun ModelRunScreen(
             onDitWidthChange = onDitWidthChange,
             onDitHeightChange = onDitHeightChange,
             aspectLocked = aspectLocked,
+            lockedRatio = if (aspectLocked) lockedAspect else null,
+            onAspectPresetSelected = { ratio ->
+                lockedAspect = ratio
+                aspectLocked = true
+                val (width, height) = DitResolution.lockedSize(currentWidth.toFloat(), ratio, true)
+                currentWidth = width
+                currentHeight = height
+                aspectRatio = inferAspectRatioString(width, height)
+                saveAllFields()
+            },
             onAspectLockChange = { locked ->
                 lockedAspect = currentWidth.toDouble() / currentHeight
                 aspectLocked = locked
@@ -2421,8 +2424,8 @@ fun ModelRunScreen(
             },
 
             positive = {
-                ControlledPromptTagTextField(controller = promptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, label = {
-                    if (promptField.text.isNotEmpty()) Text("${promptField.tokenCount}/${promptField.tokenMax}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                ControlledPromptTagTextField(controller = promptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, labelInOutline = true, bottomInset = 36.dp, label = {
+                    Text(stringResource(R.string.ui_positive_short), style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 })
             },
             negative = {
@@ -2433,6 +2436,7 @@ fun ModelRunScreen(
             inputs = if (useImg2img) ({ compact -> ImageInputs(compact) }) else null,
             status = errorMessage,
             promptFocused = promptField.isFocused || negativePromptField.isFocused,
+            positiveFocused = promptField.isFocused,
             positiveCount = if (promptField.text.isNotEmpty()) "${promptField.tokenCount}/${promptField.tokenMax}" else "",
             negativeCount = if (negativePromptField.text.isNotEmpty()) "${negativePromptField.tokenCount}/${negativePromptField.tokenMax}" else "",
         )

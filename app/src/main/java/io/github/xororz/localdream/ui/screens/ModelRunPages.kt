@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -193,15 +194,17 @@ internal fun ModelRunResultPage(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(stringResource(R.string.result_tab), style = MaterialTheme.typography.titleMedium)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            currentBitmap?.let { bitmap ->
-                                Button(onClick = { onSaveClick(bitmap) }) { Text(stringResource(R.string.save)) }
-                                if (isFavorite != null) {
-                                    ChoiceControl(stringResource(R.string.ui_favorite), onFavoriteClick, Modifier.testTag("result-favorite"), checked = isFavorite, height = 52.dp)
+                        currentBitmap?.let { bitmap ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { onSaveClick(bitmap) }, modifier = Modifier.weight(1f).height(44.dp).testTag("result-save"), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) { Text(stringResource(R.string.save), style = MaterialTheme.typography.labelMedium) }
+                                if (isFavorite != null) ChoiceControl(stringResource(R.string.ui_favorite), onFavoriteClick, Modifier.weight(1f).testTag("result-favorite"), checked = isFavorite, height = 44.dp)
+                                if (showUpscaleButton) ChoiceControl(stringResource(R.string.ui_upscale_short), onUpscaleClick, Modifier.weight(1f).testTag("result-upscale"), enabled = upscaleEnabled, height = 44.dp, onLongClick = onUpscaleLongClick)
+                            }
+                            if (showUltrafixButton || showReportButton) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (showUltrafixButton) ChoiceControl("UltraFix", onUltrafixClick, enabled = ultrafixEnabled, height = 44.dp, onLongClick = onUltrafixLongClick)
+                                    if (showReportButton) OutlinedButton(onClick = onReportClick) { Icon(Icons.Default.Report, stringResource(R.string.ui_report)) }
                                 }
-                                if (showUpscaleButton) ChoiceControl(stringResource(R.string.ui_upscale_short), onUpscaleClick, enabled = upscaleEnabled, height = 52.dp, onLongClick = onUpscaleLongClick)
-                                if (showUltrafixButton) ChoiceControl("UltraFix", onUltrafixClick, enabled = ultrafixEnabled, height = 52.dp, onLongClick = onUltrafixLongClick)
-                                if (showReportButton) OutlinedButton(onClick = onReportClick) { Icon(Icons.Default.Report, stringResource(R.string.ui_report)) }
                             }
                         }
 

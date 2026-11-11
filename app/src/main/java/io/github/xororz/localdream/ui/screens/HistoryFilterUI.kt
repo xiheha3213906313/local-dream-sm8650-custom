@@ -73,11 +73,11 @@ fun HistoryFilterBar(
     Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (currentModelId != null) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChoiceControl(stringResource(R.string.history_filter_current_model_only), onSetCurrentModelOnly, Modifier.testTag("history-scope-current"), checked = filter.modelIds == setOf(currentModelId), showCheck = false)
-                ChoiceControl(stringResource(R.string.history_filter_all_models), onSetAllModels, Modifier.testTag("history-scope-all"), checked = filter.modelIds == null, showCheck = false)
+                ChoiceControl(stringResource(R.string.history_filter_current_model_only), onSetCurrentModelOnly, Modifier.testTag("history-scope-current"), checked = filter.modelIds == setOf(currentModelId))
+                ChoiceControl(stringResource(R.string.history_filter_all_models), onSetAllModels, Modifier.testTag("history-scope-all"), checked = filter.modelIds == null)
             }
         }
-        ChoiceControl(stringResource(R.string.history_view_filter), onShowFilterSheet, Modifier.testTag("history-filter-button"), checked = filter.hasAdvancedFilters(), showCheck = false, icon = Icons.Default.FilterList)
+        ChoiceControl(stringResource(R.string.history_view_filter), onShowFilterSheet, Modifier.testTag("history-filter-button"), checked = filter.hasAdvancedFilters(), icon = Icons.Default.FilterList)
     }
 }
 
@@ -556,5 +556,5 @@ private fun ToneFilterChip(selected: Boolean, onClick: () -> Unit, label: String
 
 @Composable
 private fun ToneAssistChip(onClick: () -> Unit, active: Boolean = false, label: String) {
-    ChoiceControl(label, onClick, checked = active, showCheck = false)
+    ChoiceControl(label, onClick, checked = active)
 }

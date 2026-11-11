@@ -837,6 +837,12 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                     val hasImport = !remoteActive && (page != 2 || DitEngine.isSupportedDevice())
                     var importRevealed by rememberSaveable(page, remoteActive) { mutableStateOf(false) }
                     val libraryState = rememberLazyListState()
+                    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+                        if (pagerState.isScrollInProgress || page == pagerState.currentPage) {
+                            importRevealed = false
+                            libraryState.requestScrollToItem(0)
+                        }
+                    }
                     val revealDistance = with(LocalDensity.current) { 32.dp.toPx() }
                     val revealImport = remember(libraryState, hasImport, revealDistance) {
                         object : NestedScrollConnection {
@@ -863,7 +869,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                             libraryState.animateScrollToItem(0)
                         }
                     }
-                    val showImport = models.isEmpty() || importRevealed
+                    val showImport = importRevealed && !pagerState.isScrollInProgress && page == pagerState.currentPage
                     LazyColumn(
                         state = libraryState,
                         modifier = Modifier.fillMaxSize().nestedScroll(revealImport).testTag("model-library-list"),
@@ -2337,7 +2343,7 @@ fun AddCustomModelButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         label = stringResource(R.string.ui_import_title),
         onClick = onClick,
         modifier = modifier,
-        accent = false,
+        accent = true,
     )
 }
 
@@ -2361,7 +2367,7 @@ private fun AddModelOutlinedCard(label: String, onClick: () -> Unit, accent: Boo
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .height(52.dp).padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -2369,6 +2375,7 @@ private fun AddModelOutlinedCard(label: String, onClick: () -> Unit, accent: Boo
                 imageVector = Icons.Default.Add,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
+                tint = accentColor,
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(

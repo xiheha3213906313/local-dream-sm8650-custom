@@ -90,7 +90,7 @@ fun ActionDock(navigationInsets: Boolean = true, imeInsets: Boolean = true, cont
 }
 
 @Composable
-fun keyboardIsVisible(): Boolean = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+fun keyboardIsVisible(): Boolean = LocalImeVisibleOverride.current ?: (WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0)
 
 /** One bottom clearance drives both IME travel and navigation, avoiding a late nav-height jump. */
 @Composable

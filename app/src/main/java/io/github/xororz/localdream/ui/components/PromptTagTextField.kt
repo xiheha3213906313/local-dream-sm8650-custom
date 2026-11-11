@@ -123,7 +123,10 @@ fun PromptTagTextField(
     minExpandedLines: Int = 3,
     allowExpand: Boolean = true,
     fillViewport: Boolean = false,
+    labelInOutline: Boolean = false,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
+    io.github.xororz.localdream.ui.design.ClearFocusOnImeDismiss()
     var expanded by remember { mutableStateOf(false) }
     var anchorWidthPx by remember { mutableIntStateOf(0) }
     var anchorTopPx by remember { mutableFloatStateOf(0f) }
@@ -167,7 +170,7 @@ fun PromptTagTextField(
     // BasicTextField (instead of OutlinedTextField) so onTextLayout exposes the
     // caret rectangle; the outlined look is reproduced with DecorationBox.
     Column(modifier = if (fillViewport) modifier.fillMaxHeight() else modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        label()
+        if (!labelInOutline) label()
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -189,7 +192,8 @@ fun PromptTagTextField(
             onTextLayout = { textLayout = it },
             decorationBox = { innerTextField ->
                 OutlinedTextFieldDefaults.DecorationBox(
-                    value = value.text,
+                    // Float the workspace heading when empty without changing editor text.
+                    value = if (labelInOutline && value.text.isEmpty()) " " else value.text,
                     innerTextField = {
                         // Measure the inner text field so the caret's local rect can
                         // be converted into window coordinates.
@@ -206,7 +210,7 @@ fun PromptTagTextField(
                     singleLine = false,
                     visualTransformation = overflowTransformation,
                     interactionSource = interactionSource,
-                    label = null,
+                    label = if (labelInOutline) label else null,
                     trailingIcon = if (allowExpand) {
                         (
                             {
@@ -225,7 +229,7 @@ fun PromptTagTextField(
                     } else {
                         null
                     },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp + bottomInset),
                     colors = outlinedColors,
                     container = {
                         OutlinedTextFieldDefaults.Container(

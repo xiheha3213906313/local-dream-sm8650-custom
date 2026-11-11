@@ -9,8 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -32,7 +30,6 @@ internal fun ChoiceControl(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     checked: Boolean = false,
-    showCheck: Boolean = true,
     icon: ImageVector? = null,
     height: Dp = 40.dp,
     enabled: Boolean = true,
@@ -48,7 +45,7 @@ internal fun ChoiceControl(
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val leading = icon ?: if (checked && showCheck) Icons.Default.Check else null
+        val leading = icon
         if (leading != null) Icon(leading, null, Modifier.size(18.dp), tint = foreground)
         Text(label, color = foreground, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }

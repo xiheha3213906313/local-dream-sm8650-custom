@@ -90,7 +90,10 @@ fun LocalDreamTheme(themeState: ThemeState, content: @Composable () -> Unit) {
             typography = Typography,
             shapes = Shapes,
             motionScheme = MotionScheme.expressive(),
-            content = content,
+            content = {
+                io.github.xororz.localdream.ui.design.ClearFocusOnImeDismiss()
+                content()
+            },
         )
     }
 }
