@@ -33,4 +33,5 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Raise the live parameter value above the pointer while dragging; accumulate motion from the gesture's starting value.
 - [x] Caption image actions, consolidate editing tools into one row, remove duplicate thumbnail-side action buttons.
 - [x] Cap the positive prompt region so the independent negative prompt immediately follows its actual border.
-- [ ] Final large-font, animation and input verification; same-certificate APK build and publication without downloading published assets.
+- [x] 106 regression checks passed in GitHub Actions, including four font scales and runtime drag reversal; final local build, original certificate, APK CRC/alignment and staged native libraries verified.
+- [ ] Publish v0.13 without downloading published assets.
