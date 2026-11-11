@@ -53,13 +53,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -68,13 +65,11 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -215,7 +210,6 @@ fun ModelRunScreen(
     val msgUnknownError = stringResource(R.string.unknown_error)
     val msgSaveFailed = stringResource(R.string.save_failed_detail)
     val msgImg2imgFailed = stringResource(R.string.img2img_failed_detail)
-    val msgPleaseCropFirst = stringResource(R.string.please_crop_first)
     val msgReportSuccess = stringResource(R.string.report_success)
     val msgReportFailed = stringResource(R.string.report_failed)
     val msgNoImageAvailable = stringResource(R.string.no_image_available)
@@ -2121,6 +2115,8 @@ fun ModelRunScreen(
                 onReference = if (supportsReferenceEditing) ({ onAddEditReferencesClick() }) else null,
                 baseEnabled = !isRunning,
                 referenceEnabled = !isRunning && !editReferencesLoading,
+                onDraw = if (selectedImageUri != null && croppedBitmap != null) ({ showDrawScreen = true }) else null,
+                onMask = if (selectedImageUri != null && croppedBitmap != null) ({ showInpaintScreen = true }) else null,
             )
             AnimatedVisibility(
                 visible = !compact && !io.github.xororz.localdream.ui.design.keyboardIsVisible() && (
@@ -2196,27 +2192,6 @@ fun ModelRunScreen(
                                             modifier = Modifier.size(16.dp),
                                         )
                                     }
-                                    IconButton(
-                                        onClick = {
-                                            showDrawScreen = true
-                                        },
-                                        enabled = !isRunning && croppedBitmap != null,
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .background(
-                                                color = MaterialTheme.colorScheme.surface.copy(
-                                                    alpha = 0.7f,
-                                                ),
-                                                shape = CircleShape,
-                                            )
-                                            .align(Alignment.TopStart),
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Draw,
-                                            contentDescription = "Draw Image",
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
                                     // The base image is always reference 1.
                                     if (supportsReferenceEditing) {
                                         Text(
@@ -2231,34 +2206,6 @@ fun ModelRunScreen(
                                             style = MaterialTheme.typography.labelMedium,
                                         )
                                     }
-                                }
-                            }
-                        }
-
-                        AnimatedVisibility(
-                            visible = selectedImageUri != null && croppedBitmap != null && !isInpaintMode,
-                            enter = fadeIn() + expandHorizontally(),
-                            exit = fadeOut() + shrinkHorizontally(),
-                        ) {
-                            Row {
-                                Spacer(modifier = Modifier.width(12.dp))
-                                SmallFloatingActionButton(
-                                    onClick = {
-                                        if (croppedBitmap != null) {
-                                            showInpaintScreen = true
-                                        } else {
-                                            Toast.makeText(
-                                                context,
-                                                msgPleaseCropFirst,
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                        }
-                                    },
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Brush,
-                                        contentDescription = "Set Mask",
-                                    )
                                 }
                             }
                         }
@@ -2372,30 +2319,6 @@ fun ModelRunScreen(
                                             style = MaterialTheme.typography.labelMedium,
                                         )
                                     }
-                                }
-                            }
-                            // Same affordance as the mask button: a small FAB
-                            // after the thumbnails rather than another card.
-                            Spacer(modifier = Modifier.width(12.dp))
-                            SmallFloatingActionButton(
-                                onClick = {
-                                    if (!isRunning && !editReferencesLoading) {
-                                        onAddEditReferencesClick()
-                                    }
-                                },
-                            ) {
-                                if (editReferencesLoading) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.AddPhotoAlternate,
-                                        contentDescription = stringResource(
-                                            R.string.flux_add_reference,
-                                        ),
-                                    )
                                 }
                             }
                         }

@@ -122,6 +122,7 @@ fun PromptTagTextField(
     minCollapsedLines: Int = 2,
     minExpandedLines: Int = 3,
     allowExpand: Boolean = true,
+    fillViewport: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var anchorWidthPx by remember { mutableIntStateOf(0) }
@@ -165,13 +166,14 @@ fun PromptTagTextField(
 
     // BasicTextField (instead of OutlinedTextField) so onTextLayout exposes the
     // caret rectangle; the outlined look is reproduced with DecorationBox.
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = if (fillViewport) modifier.fillMaxHeight() else modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         label()
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (fillViewport) Modifier.weight(1f) else Modifier)
                 .onFocusChanged { onFocusChanged(it.isFocused) }
                 .onGloballyPositioned { coords ->
                     anchorWidthPx = coords.size.width

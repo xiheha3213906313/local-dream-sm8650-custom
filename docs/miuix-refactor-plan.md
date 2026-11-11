@@ -25,3 +25,12 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Remove stale collapsing app-bar scroll connections; test real list/result dragging and full result text.
 - [x] Final feedback: icon-only image actions, independent negative prompt below positive input, no divider; 82 tests passed; final divider removal passed 8 focused layout/input checks.
 - [x] Build and verify signing locally; source `2f50bd1` pushed and release `sm8650-miuix-v0.12` published. Only publication/asset metadata were checked afterward; no asset downloads.
+
+## v0.13 feedback
+
+- [x] Replace the ordinary parameter dialog with a surface whose bounds animate from/to the tapped tile in the same workspace window.
+- [x] Explicit option borders and selected state, visible outlined numeric input, and distinct random/fixed seed modes.
+- [x] Raise the live parameter value above the pointer while dragging; accumulate motion from the gesture's starting value.
+- [x] Caption image actions, consolidate editing tools into one row, remove duplicate thumbnail-side action buttons.
+- [x] Cap the positive prompt region so the independent negative prompt immediately follows its actual border.
+- [ ] Final large-font, animation and input verification; same-certificate APK build and publication without downloading published assets.

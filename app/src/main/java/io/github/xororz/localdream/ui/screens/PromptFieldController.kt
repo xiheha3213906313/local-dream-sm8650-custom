@@ -267,6 +267,7 @@ internal fun ControlledPromptTagTextField(
             modifier = Modifier.fillMaxWidth(),
             label = { if (!fixedViewport) label() },
             allowExpand = !fixedViewport,
+            fillViewport = fixedViewport,
             maxCollapsedLines = visibleLines,
             minCollapsedLines = visibleLines,
             suggestions = controller.suggestions,

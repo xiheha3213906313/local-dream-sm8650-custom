@@ -1,0 +1,48 @@
+name: Native UI checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          submodules: false
+      - name: Select Java 21 and Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37' 'build-tools;36.0.0'
+      - name: Check Kotlin and run native UI regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/robolectric.gradle" <<'GRADLE'
+          allprojects {
+              tasks.withType(Test).configureEach {
+                  systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+              }
+          }
+          GRADLE
+          # UI/unit tests do not execute inference. Release APK native-library validation
+          # is performed locally against the staged DSP engine before publication.
+          ./gradlew :app:ktlintCheck :app:detekt :app:testBasicDebugUnitTest \
+            -x :app:verifySm8650Native -Psm8650Compat=true \
+            -I "$RUNNER_TEMP/robolectric.gradle" --no-daemon
+      - name: Summarize tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+          reports = [ET.parse(p).getroot() for p in pathlib.Path('app/build/test-results/testBasicDebugUnitTest').glob('TEST-*.xml')]
+          counts = {key: sum(int(r.get(key, 0)) for r in reports) for key in ['tests', 'failures', 'errors', 'skipped']}
+          assert counts['tests'] >= 106 and counts['failures'] == 0 and counts['errors'] == 0, counts
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write(str(counts) + '\nFonts: 1.0 / 1.3 / 1.5 / 2.0; width: 360dp; native graphics, SDK 35.\n')
+          print(counts)
+          PY

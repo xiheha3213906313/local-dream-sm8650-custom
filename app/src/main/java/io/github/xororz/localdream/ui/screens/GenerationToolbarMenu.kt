@@ -1,9 +1,12 @@
 package io.github.xororz.localdream.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Collections
@@ -14,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -66,10 +70,12 @@ internal fun GenerationToolbarMenu(
 }
 
 @Composable
-internal fun ImageInputActions(onBase: () -> Unit, onReference: (() -> Unit)?, baseEnabled: Boolean = true, referenceEnabled: Boolean = true) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+internal fun ImageInputActions(onBase: () -> Unit, onReference: (() -> Unit)?, baseEnabled: Boolean = true, referenceEnabled: Boolean = true, onDraw: (() -> Unit)? = null, onMask: (() -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ImageInputIcon(androidx.compose.material.icons.Icons.Outlined.AddPhotoAlternate, stringResource(R.string.ui_base_short), "image-input-base", baseEnabled, onBase)
         if (onReference != null) ImageInputIcon(androidx.compose.material.icons.Icons.Outlined.Collections, stringResource(R.string.ui_reference_short), "image-input-reference", referenceEnabled, onReference)
+        if (onDraw != null) ImageInputIcon(Icons.Default.Draw, stringResource(R.string.ui_image_draw), "image-input-draw", baseEnabled, onDraw)
+        if (onMask != null) ImageInputIcon(Icons.Default.Brush, stringResource(R.string.ui_image_mask), "image-input-mask", baseEnabled, onMask)
     }
 }
 
@@ -81,6 +87,11 @@ private fun ImageInputIcon(icon: androidx.compose.ui.graphics.vector.ImageVector
         tooltip = { PlainTooltip { Text(label, color = MaterialTheme.colorScheme.inverseOnSurface, style = MaterialTheme.typography.bodySmall) } },
         state = androidx.compose.material3.rememberTooltipState(),
     ) {
-        FilledTonalIconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp).testTag(tag)) { Icon(icon, label, Modifier.size(24.dp)) }
+        FilledTonalButton(onClick = onClick, enabled = enabled, modifier = Modifier.height(48.dp).testTag(tag), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Icon(icon, null, Modifier.size(22.dp))
+                Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+        }
     }
 }

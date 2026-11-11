@@ -147,7 +147,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         compose.onNodeWithTag("parameter-width").performClick()
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("parameter-editor-card"))).performTextReplacement("768")
         compose.runOnIdle { assertEquals(768f, changedWidth) }
-        compose.onNodeWithContentDescription("确定").performClick()
+        compose.onNodeWithText("确定").performClick()
         compose.onNodeWithText("portrait in a quiet garden").assertIsDisplayed()
         compose.onNodeWithTag("parameter-scheduler").performClick()
         compose.onNodeWithText("Euler A").assertIsDisplayed().performClick()
@@ -192,7 +192,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         compose.onNodeWithTag("parameter-editor-card").assertDoesNotExist()
         compose.onNodeWithTag("parameter-width").performClick()
         compose.onNodeWithTag("parameter-editor-card").assertIsDisplayed()
-        capture("parameter-small-card", dialog = true)
+        capture("parameter-small-card")
     }
 
     @Test fun imageInputIsAbovePositivePromptAndMenuIsInToolbar() {
@@ -217,9 +217,121 @@ class LargeFontLayoutTest(private val scale: Float) {
         assertTrue("Negative prompt was placed below the parameters", negative.bottom <= parameters.top)
         compose.onNodeWithTag("image-input-base").assertIsDisplayed().assertHasClickAction()
         compose.onNodeWithTag("image-input-reference").assertIsDisplayed().assertHasClickAction()
-        compose.onNodeWithText("底图").assertDoesNotExist()
-        compose.onNodeWithText("参考").assertDoesNotExist()
+        compose.onNodeWithText("底图").assertIsDisplayed()
+        compose.onNodeWithText("参考").assertIsDisplayed()
         capture("generation-independent-negative")
+    }
+
+    @Test fun promptHeightIsCappedAndNegativeFollowsWithoutBottomSpacer() {
+        show(dark = true) { SampleWorkspace() }
+        compose.onNodeWithTag("parameter-panel-toggle").performClick()
+        val positive = compose.onNodeWithTag("positive-prompt-editor").fetchSemanticsNode().boundsInRoot
+        val negative = compose.onNodeWithTag("negative-prompt-section").fetchSemanticsNode().boundsInRoot
+        assertTrue(positive.height <= with(compose.density) { 192.dp.toPx() })
+        assertTrue("Empty space pushed the negative prompt down", negative.top - positive.bottom <= with(compose.density) { 8.dp.toPx() })
+        capture("dark-prompts-follow")
+    }
+
+    @Test fun samplerHasSelectedButtonsAndSeedHasDistinctModes() {
+        show(dark = true) { SampleWorkspace() }
+        compose.onNodeWithTag("parameter-scheduler").performClick()
+        compose.onNodeWithText("Euler").assertIsSelected()
+        compose.onNodeWithText("Euler A").assertHasClickAction().performClick().assertIsSelected()
+        compose.onNodeWithText("Euler").assertIsNotSelected()
+        capture("dark-sampler-buttons")
+        compose.onNodeWithContentDescription("返回提示词").performClick()
+        compose.onNodeWithTag("parameter-seed").performClick()
+        compose.onNodeWithTag("seed-random-mode").assertIsSelected()
+        compose.onNodeWithTag("parameter-number-input").assertDoesNotExist()
+        capture("dark-seed-random")
+        compose.onNodeWithTag("seed-fixed-mode").performClick().assertIsSelected()
+        compose.onNodeWithTag("parameter-number-input").performTextClearance()
+        compose.onNodeWithTag("parameter-number-input").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+        compose.onNodeWithTag("seed-fixed-mode").assertIsSelected()
+        compose.onNodeWithTag("parameter-number-input").performTextReplacement("987654321")
+        compose.onNodeWithTag("parameter-number-input").assertTextContains("987654321")
+        capture("dark-seed-fixed")
+    }
+
+    @Test fun parameterCardEdgesAnimateFromTileAndReturnToTileInSameWindow() {
+        show(dark = true) { SampleWorkspace() }
+        val tile = compose.onNodeWithTag("parameter-width").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("parameter-width").performClick()
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val start = compose.onNodeWithTag("parameter-editor-card").fetchSemanticsNode().boundsInRoot
+        assertEquals(tile.width, start.width, 3f)
+        assertEquals(tile.height, start.height, 3f)
+        compose.mainClock.advanceTimeBy(128)
+        val middle = compose.onNodeWithTag("parameter-editor-card").fetchSemanticsNode().boundsInRoot
+        assertTrue(middle.width > start.width)
+        assertTrue(middle.height > start.height)
+        capture("dark-parameter-morph-middle")
+        compose.mainClock.advanceTimeBy(400)
+        val end = compose.onNodeWithTag("parameter-editor-card").fetchSemanticsNode().boundsInRoot
+        assertTrue(end.width > middle.width)
+        assertTrue(end.height > middle.height)
+        assertNull("Parameter editor created a separate Dialog", org.robolectric.shadows.ShadowDialog.getLatestDialog())
+        capture("dark-number-input")
+        compose.onNodeWithContentDescription("返回提示词").performClick()
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(128)
+        val closing = compose.onNodeWithTag("parameter-editor-card").fetchSemanticsNode().boundsInRoot
+        assertTrue(closing.width < end.width)
+        assertTrue(closing.width > tile.width)
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("parameter-editor-card").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun longPressShowsValueAboveTheFingerUntilRelease() {
+        show(dark = true) { SampleWorkspace() }
+        val tile = compose.onNodeWithTag("parameter-width").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("parameter-width").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(48f, 0f), delayMillis = 100)
+        }
+        val lifted = compose.onNodeWithTag("parameter-drag-preview").fetchSemanticsNode().boundsInRoot
+        assertTrue("Dragged value is obscured by the touch point", lifted.bottom < tile.center.y)
+        capture("dark-drag-lift")
+        compose.onNodeWithTag("parameter-width").performTouchInput { up() }
+        compose.onNodeWithTag("parameter-drag-preview").assertDoesNotExist()
+        compose.onNodeWithTag("parameter-editor-card").assertDoesNotExist()
+    }
+
+    @Test fun imageEditingToolsUseOneLabeledActionRow() {
+        var clicked = ""
+        show(dark = true) { ImageInputActions({ clicked = "base" }, { clicked = "reference" }, onDraw = { clicked = "draw" }, onMask = { clicked = "mask" }) }
+        val first = compose.onNodeWithTag("image-input-base").getUnclippedBoundsInRoot()
+        listOf("base", "reference", "draw", "mask").forEach { id ->
+            val action = compose.onNodeWithTag("image-input-$id")
+            val bounds = action.getUnclippedBoundsInRoot()
+            assertEquals(first.top, bounds.top)
+            assertEquals(first.bottom, bounds.bottom)
+            action.performScrollTo().performClick()
+            compose.runOnIdle { assertEquals(id, clicked) }
+        }
+    }
+
+    @Test fun draggingRuntimeBackToStartingPointRestoresStartingOption() {
+        show(dark = true) { SampleWorkspace(cpuRuntime = true) }
+        compose.onNodeWithTag("parameter-runtime").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(36f, 0f), delayMillis = 100)
+        }
+        compose.onNode(hasText("GPU") and hasAnyAncestor(hasTestTag("parameter-drag-preview"))).assertIsDisplayed()
+        compose.onNodeWithTag("parameter-runtime").performTouchInput { moveBy(Offset(-36f, 0f), delayMillis = 100) }
+        compose.onNode(hasText("CPU") and hasAnyAncestor(hasTestTag("parameter-drag-preview"))).assertIsDisplayed()
+        compose.onNodeWithTag("parameter-runtime").performTouchInput { up() }
+        compose.onNodeWithTag("parameter-runtime").assertTextContains("CPU")
     }
 
     @Test fun modelTabsFillTheAvailableRow() {
@@ -232,8 +344,11 @@ class LargeFontLayoutTest(private val scale: Float) {
     }
 
     @androidx.compose.runtime.Composable
-    private fun SampleWorkspace(onWidth: (Float) -> Unit = {}) {
+    private fun SampleWorkspace(onWidth: (Float) -> Unit = {}, cpuRuntime: Boolean = false) {
         var width by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(512f) }
+        var openCL by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        var seed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+        var sampler by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("euler") }
         val scope = androidx.compose.runtime.rememberCoroutineScope()
         val context = androidx.compose.ui.platform.LocalContext.current
         val repository = androidx.compose.runtime.remember { TagAutocompleteRepository.getInstance(context) }
@@ -247,17 +362,17 @@ class LargeFontLayoutTest(private val scale: Float) {
         }) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 GenerationWorkspace(
-                    isSdxl = false, isDit = true, runOnCpu = false, useImg2img = true, isRunning = false,
+                    isSdxl = false, isDit = !cpuRuntime, runOnCpu = cpuRuntime, useImg2img = true, isRunning = false,
                     aspectRatio = "1:1", availableResolutions = emptyList(), currentWidth = width.toInt(), currentHeight = 512,
-                    scheduler = "euler", steps = 4f, cfg = 1f, useOpenCL = false, batchCounts = 1,
-                    denoiseStrength = .6f, seed = "", returnedSeed = 123L,
+                    scheduler = sampler, steps = 4f, cfg = 1f, useOpenCL = openCL, batchCounts = 1,
+                    denoiseStrength = .6f, seed = seed, returnedSeed = 123L,
                     onAspectRatioSelected = {}, onCustomAspectRatioClick = {}, onResolutionSelected = {},
                     onDitWidthChange = {
                         width = it
                         onWidth(it)
-                    }, onSchedulerChange = {}, onStepsChange = {}, onCfgChange = {}, onSizeChange = {},
-                    onCpuSelected = {}, onGpuSelected = {}, onBatchCountsChange = {}, onDenoiseStrengthChange = {},
-                    onSeedChange = {}, onUseLastSeed = {},
+                    }, onSchedulerChange = { sampler = it }, onStepsChange = {}, onCfgChange = {}, onSizeChange = {},
+                    onCpuSelected = { openCL = false }, onGpuSelected = { openCL = true }, onBatchCountsChange = {}, onDenoiseStrengthChange = {},
+                    onSeedChange = { seed = it }, onUseLastSeed = { seed = "123" },
                     promptFocused = positive.isFocused || negative.isFocused,
                     positive = { ControlledPromptTagTextField(positive, false, {}, fixedViewport = true) },
                     negative = { ControlledPromptTagTextField(negative, false, {}, fixedViewport = true) },

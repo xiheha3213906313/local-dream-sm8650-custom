@@ -4,13 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
@@ -19,20 +13,21 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.Resolution
 import io.github.xororz.localdream.ui.design.*
@@ -81,14 +76,18 @@ internal fun GenerationWorkspace(
     positiveCount: String = "",
     negativeCount: String = "",
 ) {
-    var active by rememberSaveable { mutableStateOf<String?>(null) }
+    var active by remember { mutableStateOf<String?>(null) }
+    var editorOpen by remember { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf<String?>(null) }
+    val anchors = remember { mutableStateMapOf<String, Rect>() }
+    var origin by remember { mutableStateOf(Offset.Zero) }
     var parametersExpanded by rememberSaveable { mutableStateOf(true) }
     var negativeExpanded by rememberSaveable { mutableStateOf(false) }
     val focus = LocalFocusManager.current
     val keyboardVisible = keyboardIsVisible()
     fun finishEdit() {
         focus.clearFocus()
-        active = null
+        editorOpen = false
     }
     BackHandler(enabled = active != null) { finishEdit() }
     val fields = mutableListOf<WorkspaceParameter>()
@@ -133,10 +132,9 @@ internal fun GenerationWorkspace(
                 onSeedChange((start + ticks).coerceAtLeast(0L).toString())
             }
 
-            "runtime" -> if (ticks > 0 && !useOpenCL) {
-                onGpuSelected()
-            } else if (ticks < 0 && useOpenCL) {
-                onCpuSelected()
+            "runtime" -> {
+                val selectGpu = if (ticks == 0) useOpenCL else ticks > 0
+                if (selectGpu) onGpuSelected() else onCpuSelected()
             }
 
             "scheduler" -> {
@@ -151,12 +149,12 @@ internal fun GenerationWorkspace(
             }
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
         val compact = maxHeight < 420.dp || keyboardVisible
         val showParameters = parametersExpanded && !compact && !promptFocused
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp).testTag("generation-workspace"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (inputs != null) Box(Modifier.fillMaxWidth().testTag("workspace-image-inputs")) { inputs(compact) }
-            PromptRegion(stringResource(R.string.ui_positive_short), positiveCount, Modifier.weight(1f), positive)
+            PromptRegion(stringResource(R.string.ui_positive_short), positiveCount, Modifier.weight(1f, fill = false).heightIn(max = 192.dp), positive)
             // Independent prompt section directly below the positive prompt, outside the parameters.
             Column(Modifier.fillMaxWidth().testTag("negative-prompt-section"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
@@ -190,9 +188,18 @@ internal fun GenerationWorkspace(
                     fields.chunked(2).forEach { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { field ->
-                                ParameterCell(field, Modifier.weight(1f), onAdjust = { ticks -> adjust(field.id, ticks) }) {
+                                ParameterCell(
+                                    field,
+                                    Modifier.weight(1f).onGloballyPositioned { coordinates ->
+                                        val top = coordinates.positionInWindow() - origin
+                                        anchors[field.id] = Rect(top, androidx.compose.ui.geometry.Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
+                                    }.graphicsLayer { alpha = if (active == field.id || dragging == field.id) 0f else 1f },
+                                    onAdjust = { ticks -> adjust(field.id, ticks) },
+                                    onDragging = { dragging = if (it) field.id else null },
+                                ) {
                                     focus.clearFocus()
                                     active = field.id
+                                    editorOpen = true
                                 }
                             }
                             if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -202,98 +209,86 @@ internal fun GenerationWorkspace(
             }
             if (status != null) Text(status, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-    }
-    val selected = fields.firstOrNull { it.id == active }
-    if (selected != null) {
-        Dialog(onDismissRequest = ::finishEdit, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Card(Modifier.padding(horizontal = 24.dp).widthIn(max = 420.dp).fillMaxWidth().heightIn(max = 440.dp).testTag("parameter-editor-card")) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(selected.label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                        IconButton(onClick = ::finishEdit) { Icon(Icons.Default.Close, stringResource(R.string.ui_back_to_prompts)) }
+        val selected = fields.firstOrNull { it.id == active }
+        val source = anchors[active]
+        if (selected != null && source != null) {
+            ExpandedParameter(
+                selected.label, selected.value, source, maxWidth, maxHeight,
+                if (active == "seed" || active == "scheduler") 390.dp else 300.dp,
+                editorOpen, ::finishEdit, { active = null },
+            ) {
+                when (active) {
+                    "width" -> if (isDit || runOnCpu) {
+                        NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit)
+                    } else {
+                        ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
                     }
-                    when (active) {
-                        "width" -> if (isDit || runOnCpu) {
-                            NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit)
-                        } else {
-                            ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
-                        }
 
-                        "height" -> if (isDit) {
-                            NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit)
-                        } else {
-                            ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
-                        }
+                    "height" -> if (isDit) {
+                        NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit)
+                    } else {
+                        ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
+                    }
 
-                        "steps" -> NumberEditor(stringResource(R.string.ui_steps), steps, 1f..50f, 48, true, onStepsChange, ::finishEdit)
+                    "steps" -> NumberEditor(stringResource(R.string.ui_steps), steps, 1f..50f, 48, true, onStepsChange, ::finishEdit)
 
-                        "cfg" -> NumberEditor("CFG", cfg, 1f..30f, 57, false, onCfgChange, ::finishEdit)
+                    "cfg" -> NumberEditor("CFG", cfg, 1f..30f, 57, false, onCfgChange, ::finishEdit)
 
-                        "batch" -> NumberEditor(stringResource(R.string.ui_batch), batchCounts.toFloat(), 1f..10f, 8, true, onBatchCountsChange, ::finishEdit)
+                    "batch" -> NumberEditor(stringResource(R.string.ui_batch), batchCounts.toFloat(), 1f..10f, 8, true, onBatchCountsChange, ::finishEdit)
 
-                        "denoise" -> NumberEditor(stringResource(R.string.ui_denoise_short), denoiseStrength, 0f..1f, 99, false, onDenoiseStrengthChange, ::finishEdit)
+                    "denoise" -> NumberEditor(stringResource(R.string.ui_denoise_short), denoiseStrength, 0f..1f, 99, false, onDenoiseStrengthChange, ::finishEdit)
 
-                        "seed" -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                seed,
-                                onSeedChange,
-                                Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                placeholder = { Text(stringResource(R.string.ui_random)) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                                keyboardActions = KeyboardActions(onDone = { finishEdit() }),
-                                trailingIcon = { IconButton(onClick = ::finishEdit) { Icon(Icons.Default.Check, stringResource(R.string.confirm)) } },
-                            )
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton(onClick = { onSeedChange("") }) { Text(stringResource(R.string.ui_random)) }
-                                if (returnedSeed != null) TextButton(onClick = onUseLastSeed) { Text(stringResource(R.string.ui_use_last_seed)) }
+                    "seed" -> SeedEditor(seed, returnedSeed, onSeedChange, onUseLastSeed, ::finishEdit)
+
+                    "scheduler" -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val karras = scheduler.endsWith("_karras")
+                            listOf("dpm" to "DPM 2M", "dpm_sde" to "DPM SDE", "euler_a" to "Euler A", "euler" to "Euler", "lcm" to "LCM").forEach { (id, label) ->
+                                ParameterChoice(label, scheduler.removeSuffix("_karras") == id, onClick = {
+                                    onSchedulerChange(if (karras && id != "lcm") "${id}_karras" else id)
+                                })
                             }
                         }
-
-                        "scheduler" -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                val karras = scheduler.endsWith("_karras")
-                                listOf("dpm" to "DPM 2M", "dpm_sde" to "DPM SDE", "euler_a" to "Euler A", "euler" to "Euler", "lcm" to "LCM").forEach { (id, label) ->
-                                    TextButton(onClick = {
-                                        onSchedulerChange(if (karras && id != "lcm") "${id}_karras" else id)
-                                        finishEdit()
-                                    }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text(label) }
-                                }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text("Karras", style = MaterialTheme.typography.labelLarge)
-                                val base = scheduler.removeSuffix("_karras")
-                                Switch(scheduler.endsWith("_karras"), { onSchedulerChange(if (it) "${base}_karras" else base) }, enabled = base != "lcm")
-                            }
-                        }
-
-                        "runtime" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = {
-                                onCpuSelected()
-                                finishEdit()
-                            }) { Text("CPU") }
-                            Button(onClick = {
-                                onGpuSelected()
-                                finishEdit()
-                            }) { Text("GPU") }
-                        }
-
-                        "aspect" -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("1:1", "3:4", "4:3").forEach { ratio ->
-                                TextButton(onClick = {
-                                    onAspectRatioSelected(ratio)
-                                    finishEdit()
-                                }) { Text(ratio) }
-                            }
-                            TextButton(onClick = {
-                                onCustomAspectRatioClick()
-                                finishEdit()
-                            }) { Text(stringResource(R.string.ui_custom)) }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Karras", style = MaterialTheme.typography.labelLarge)
+                            val base = scheduler.removeSuffix("_karras")
+                            Switch(scheduler.endsWith("_karras"), { onSchedulerChange(if (it) "${base}_karras" else base) }, enabled = base != "lcm")
                         }
                     }
+
+                    "runtime" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ParameterChoice("CPU", !useOpenCL, onClick = {
+                            onCpuSelected()
+                            finishEdit()
+                        })
+                        ParameterChoice("GPU", useOpenCL, onClick = {
+                            onGpuSelected()
+                            finishEdit()
+                        })
+                    }
+
+                    "aspect" -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("1:1", "3:4", "4:3").forEach { ratio ->
+                            ParameterChoice(ratio, aspectRatio == ratio, onClick = {
+                                onAspectRatioSelected(ratio)
+                                finishEdit()
+                            })
+                        }
+                        ParameterChoice(stringResource(R.string.ui_custom), false, onClick = {
+                            onCustomAspectRatioClick()
+                            finishEdit()
+                        })
+                    }
+                }
+
+                if (active !in listOf("width", "height", "steps", "cfg", "batch", "denoise", "seed")) {
+                    Button(onClick = ::finishEdit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.confirm)) }
                 }
             }
         }
+        val lifted = fields.firstOrNull { it.id == dragging }
+        val liftSource = anchors[dragging]
+        if (lifted != null && liftSource != null) LiftedParameter(lifted.label, lifted.value, liftSource)
     }
 }
 
@@ -311,9 +306,10 @@ private fun PromptRegion(title: String, count: String, modifier: Modifier, conte
 private data class WorkspaceParameter(val id: String, val label: String, val value: String, val enabled: Boolean)
 
 @Composable
-private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjust: (Int) -> Unit, onClick: () -> Unit) {
+private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjust: (Int) -> Unit, onDragging: (Boolean) -> Unit, onClick: () -> Unit) {
     val latestAdjust by rememberUpdatedState(onAdjust)
     val latestClick by rememberUpdatedState(onClick)
+    val latestDragging by rememberUpdatedState(onDragging)
     val haptic = LocalHapticFeedback.current
     val tickPixels = with(LocalDensity.current) { 12.dp.toPx() }
     val gesture = if (field.enabled) {
@@ -330,15 +326,24 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
                     }
                 } else {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    latestDragging(true)
+                    // Keep a single starting value for the gesture, even if several pointer
+                    // events arrive before Compose has drawn the next frame.
+                    val adjustFromStart = latestAdjust
                     var distance = 0f
-                    horizontalDrag(down.id) { change ->
-                        distance += change.positionChange().x
-                        val ticks = (distance / tickPixels).toInt()
-                        if (ticks != 0) {
-                            latestAdjust(ticks)
-                            distance -= ticks * tickPixels
+                    var previousTicks = 0
+                    try {
+                        horizontalDrag(down.id) { change ->
+                            distance += change.positionChange().x
+                            val ticks = (distance / tickPixels).toInt()
+                            if (ticks != previousTicks) {
+                                adjustFromStart(ticks)
+                                previousTicks = ticks
+                            }
+                            change.consume()
                         }
-                        change.consume()
+                    } finally {
+                        latestDragging(false)
                     }
                 }
             }
@@ -370,22 +375,15 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
 private fun NumberEditor(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int, integer: Boolean, onChange: (Float) -> Unit, onDone: () -> Unit) {
     var entry by rememberSaveable(label) { mutableStateOf(if (integer) value.roundToInt().toString() else "%.2f".format(java.util.Locale.ROOT, value)) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            entry,
-            { next ->
-                entry = next
-                next.toFloatOrNull()?.takeIf { it.isFinite() }?.let { onChange(it.coerceIn(range)) }
-            },
-            Modifier.fillMaxWidth().semantics { contentDescription = label },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = if (integer) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onDone() }),
-            trailingIcon = { IconButton(onClick = onDone) { Icon(Icons.Default.Check, stringResource(R.string.confirm)) } },
-        )
+        ParameterNumberInput(label, entry, { next ->
+            entry = next
+            next.toFloatOrNull()?.takeIf { it.isFinite() }?.let { onChange(it.coerceIn(range)) }
+        }, integer, onDone)
         Slider(value.coerceIn(range), { next ->
             entry = if (integer) next.roundToInt().toString() else "%.2f".format(java.util.Locale.ROOT, next)
             onChange(next)
         }, valueRange = range, steps = steps)
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.confirm)) }
     }
 }
 
@@ -393,10 +391,10 @@ private fun NumberEditor(label: String, value: Float, range: ClosedFloatingPoint
 private fun ResolutionEditor(resolutions: List<Resolution>, onSelected: (Resolution) -> Unit, onDone: () -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         resolutions.forEach { r ->
-            TextButton(onClick = {
+            ParameterChoice("${r.width} × ${r.height}", false, onClick = {
                 onSelected(r)
                 onDone()
-            }) { Text("${r.width} × ${r.height}") }
+            })
         }
     }
 }

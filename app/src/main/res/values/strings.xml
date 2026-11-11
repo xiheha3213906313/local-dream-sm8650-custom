@@ -560,4 +560,11 @@
     <string name="sm8650_diagnostic_read_failed">Could not read the previous diagnostic log.</string>
     <string name="sm8650_cpu_vae">CPU VAE</string>
     <string name="sm8650_cpu_vae_hint">SM8650 DiT: on uses CPU VAE; off tries DSP VAE. Takes effect when you next open the model. DiT sampling continues on DSP.</string>
+    <string name="ui_enter_number">Enter a number</string>
+    <string name="ui_seed_random_mode">Random each time</string>
+    <string name="ui_seed_fixed_mode">Fixed seed</string>
+    <string name="ui_seed_random_help">A new seed will be generated for every image.</string>
+    <string name="ui_image_draw">Draw</string>
+    <string name="ui_image_mask">Mask</string>
+    <string name="ui_last_seed_value">Last seed: %1$s</string>
 </resources>

@@ -549,4 +549,11 @@
     <string name="sm8650_diagnostic_read_failed">无法读取上次诊断日志。</string>
     <string name="sm8650_cpu_vae">CPU 解码</string>
     <string name="sm8650_cpu_vae_hint">SM8650 DiT：开启使用 CPU 解码，关闭试用 DSP 解码。下次进入模型时生效，DiT 采样仍使用 DSP。</string>
+    <string name="ui_enter_number">输入数值</string>
+    <string name="ui_seed_random_mode">每次随机</string>
+    <string name="ui_seed_fixed_mode">固定种子</string>
+    <string name="ui_seed_random_help">每次生成时自动使用新的随机种子</string>
+    <string name="ui_image_draw">绘制</string>
+    <string name="ui_image_mask">蒙版</string>
+    <string name="ui_last_seed_value">上次种子：%1$s</string>
 </resources>
