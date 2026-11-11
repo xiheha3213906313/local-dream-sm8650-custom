@@ -281,9 +281,11 @@ internal fun GenerationWorkspace(
                                 if (row.first().id == "width" && index == 0 && isDit) {
                                     val chooseRatio: (Int) -> Unit = { value ->
                                         val next = value.coerceIn(CommonAspectRatios.indices)
-                                        if (next != ratioIndex) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        ratioIndex = next
-                                        onAspectPresetSelected(CommonAspectRatios[next].second)
+                                        if (next != ratioIndex) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            ratioIndex = next
+                                            onAspectPresetSelected(CommonAspectRatios[next].second)
+                                        }
                                     }
                                     var initialRatio by remember { mutableIntStateOf(3) }
                                     Box(

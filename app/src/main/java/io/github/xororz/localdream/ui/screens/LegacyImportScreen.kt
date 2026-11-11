@@ -114,7 +114,7 @@ fun LegacyImportScreen(navController: NavController, archive: Boolean) {
                 if (!archive) {
                     Text(stringResource(R.string.clip_skip_hint), style = MaterialTheme.typography.bodyMedium)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(1, 2).forEach { value -> OutlinedButton(onClick = { clipSkip = value }, enabled = !busy) { Text("${if (clipSkip == value) "✓ " else ""}Clip Skip $value") } }
+                        listOf(1, 2).forEach { value -> ChoiceControl("Clip Skip $value", { clipSkip = value }, checked = clipSkip == value, enabled = !busy) }
                     }
                 }
             }

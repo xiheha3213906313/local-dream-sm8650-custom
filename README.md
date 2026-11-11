@@ -14,6 +14,7 @@ _Also supports CPU/GPU inference_
 v0.11 rebuilds the model library, fixed generation workspace and import pages with
 [Miuix](https://github.com/compose-miuix-ui/miuix). Compact, single-line actions respect
 large system fonts; filenames and expandable guidance live outside controls.
+See [v0.15 input and gesture refinements](docs/sm8650-v0.15.md) for reselectable locked ratios, moving ruler marks, prompt expansion and reference-image ordering.
 See [v0.14 interaction refinements](docs/sm8650-v0.14.md) for aspect-ratio locking, in-place drag extension, history filters and stable IME dismissal.
 The [v0.13 generation controls](docs/sm8650-v0.13.md) notes cover parameter tiles that expand in place, outlined options and inputs, explicit random/fixed seed modes, and labeled image tools.
 The [v0.12 fixes](docs/sm8650-v0.12.md) cover list/result scrolling and anchored menus.
