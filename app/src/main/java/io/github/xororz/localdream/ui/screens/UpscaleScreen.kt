@@ -22,7 +22,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
@@ -55,6 +54,11 @@ import io.github.xororz.localdream.service.BackgroundGenerationService
 import io.github.xororz.localdream.service.ModelDownloadService
 import io.github.xororz.localdream.ui.components.BlockingProgressOverlay
 import io.github.xororz.localdream.ui.components.SmoothCircularWavyProgressIndicator
+import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.ElevatedCard
+import io.github.xororz.localdream.ui.design.FilledTonalIconButton
+import io.github.xororz.localdream.ui.design.Scaffold
+import io.github.xororz.localdream.ui.design.Text
 import io.github.xororz.localdream.ui.theme.Motion
 import io.github.xororz.localdream.utils.UPSCALER_NATIVE_SCALE
 import io.github.xororz.localdream.utils.performUpscale
@@ -355,16 +359,9 @@ fun UpscaleScreen(navController: NavController, modifier: Modifier = Modifier) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.image_upscale)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStackIfResumed() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back),
-                        )
-                    }
-                },
+            io.github.xororz.localdream.ui.design.DreamToolbar(
+                title = stringResource(R.string.image_upscale),
+                onBack = { navController.popBackStackIfResumed() },
             )
         },
     ) { paddingValues ->

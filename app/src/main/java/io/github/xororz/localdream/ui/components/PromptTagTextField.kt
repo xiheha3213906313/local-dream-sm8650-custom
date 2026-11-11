@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -36,15 +37,12 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +86,9 @@ import io.github.xororz.localdream.data.FuzzyMatcher
 import io.github.xororz.localdream.data.TagMatchType
 import io.github.xororz.localdream.data.TagSuggestion
 import io.github.xororz.localdream.data.tagUnderscoresToSpaces
+import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.IconButton
+import io.github.xororz.localdream.ui.design.Text
 import kotlin.math.roundToInt
 
 // Fixed height of the pinned action toolbar, subtracted from the suggestion
@@ -120,6 +121,7 @@ fun PromptTagTextField(
     maxCollapsedLines: Int = 2,
     minCollapsedLines: Int = 2,
     minExpandedLines: Int = 3,
+    allowExpand: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var anchorWidthPx by remember { mutableIntStateOf(0) }
@@ -163,7 +165,8 @@ fun PromptTagTextField(
 
     // BasicTextField (instead of OutlinedTextField) so onTextLayout exposes the
     // caret rectangle; the outlined look is reproduced with DecorationBox.
-    Column(modifier = modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        label()
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -177,8 +180,8 @@ fun PromptTagTextField(
             enabled = enabled,
             textStyle = inputTextStyle,
             visualTransformation = overflowTransformation,
-            maxLines = if (expanded) Int.MAX_VALUE else maxCollapsedLines,
-            minLines = if (expanded) minExpandedLines else minCollapsedLines,
+            maxLines = if (expanded && allowExpand) Int.MAX_VALUE else maxCollapsedLines,
+            minLines = if (expanded && allowExpand) minExpandedLines else minCollapsedLines,
             interactionSource = interactionSource,
             cursorBrush = cursorBrush,
             onTextLayout = { textLayout = it },
@@ -201,19 +204,26 @@ fun PromptTagTextField(
                     singleLine = false,
                     visualTransformation = overflowTransformation,
                     interactionSource = interactionSource,
-                    label = label,
-                    trailingIcon = {
-                        IconButton(onClick = { expanded = !expanded }) {
-                            Icon(
-                                imageVector = if (expanded) {
-                                    Icons.Default.KeyboardArrowUp
-                                } else {
-                                    Icons.Default.KeyboardArrowDown
-                                },
-                                contentDescription = null,
+                    label = null,
+                    trailingIcon = if (allowExpand) {
+                        (
+                            {
+                                IconButton(onClick = { expanded = !expanded }) {
+                                    Icon(
+                                        imageVector = if (expanded) {
+                                            Icons.Default.KeyboardArrowUp
+                                        } else {
+                                            Icons.Default.KeyboardArrowDown
+                                        },
+                                        contentDescription = null,
+                                    )
+                                }
+                            }
                             )
-                        }
+                    } else {
+                        null
                     },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     colors = outlinedColors,
                     container = {
                         OutlinedTextFieldDefaults.Container(
@@ -221,7 +231,7 @@ fun PromptTagTextField(
                             isError = false,
                             interactionSource = interactionSource,
                             colors = outlinedColors,
-                            shape = MaterialTheme.shapes.medium,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
                         )
                     },
                 )

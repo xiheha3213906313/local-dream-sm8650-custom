@@ -16,12 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -36,6 +32,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.GenerationMode
+import io.github.xororz.localdream.ui.design.Checkbox
+import io.github.xororz.localdream.ui.design.Switch
+import io.github.xororz.localdream.ui.design.Text
+import io.github.xororz.localdream.ui.design.TextButton
 import io.github.xororz.localdream.ui.screens.GenerationParameters
 import io.github.xororz.localdream.utils.ImportedParams
 import io.github.xororz.localdream.utils.ParamShare

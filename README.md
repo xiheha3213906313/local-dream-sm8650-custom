@@ -9,6 +9,13 @@ _Also supports CPU/GPU inference_
 
 </div>
 
+## Miuix UI
+
+v0.11 rebuilds the model library, fixed generation workspace and import pages with
+[Miuix](https://github.com/compose-miuix-ui/miuix). Compact, single-line actions respect
+large system fonts; filenames and expandable guidance live outside controls.
+See [screenshots, behavior and validation](docs/sm8650-v0.11.md).
+
 ## Snapdragon 8 Gen 3 support
 
 **SM8650 / SM8650P are included in the supported DiT device list.** All existing

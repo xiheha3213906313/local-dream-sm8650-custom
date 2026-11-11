@@ -53,7 +53,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -68,7 +67,6 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,11 +79,23 @@ import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.*
 import io.github.xororz.localdream.data.DarkModePreference
 import io.github.xororz.localdream.navigation.Screen
+import io.github.xororz.localdream.navigation.popBackStackIfResumed
 import io.github.xororz.localdream.service.ModelDownloadService
 import io.github.xororz.localdream.ui.components.BlockingProgressOverlay
 import io.github.xororz.localdream.ui.components.CapturedLogsDialog
-import io.github.xororz.localdream.ui.components.SmoothCircularWavyProgressIndicator
 import io.github.xororz.localdream.ui.components.SmoothLinearWavyProgressIndicator
+import io.github.xororz.localdream.ui.design.Button
+import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.Checkbox
+import io.github.xororz.localdream.ui.design.FilledTonalButton
+import io.github.xororz.localdream.ui.design.IconButton
+import io.github.xororz.localdream.ui.design.OutlinedButton
+import io.github.xororz.localdream.ui.design.OutlinedTextField
+import io.github.xororz.localdream.ui.design.Scaffold
+import io.github.xororz.localdream.ui.design.Slider
+import io.github.xororz.localdream.ui.design.Switch
+import io.github.xororz.localdream.ui.design.Text
+import io.github.xororz.localdream.ui.design.TextButton
 import io.github.xororz.localdream.ui.theme.LocalThemeController
 import io.github.xororz.localdream.ui.theme.Motion
 import io.github.xororz.localdream.ui.theme.ThemePreset
@@ -109,15 +119,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class LoRAFile(val uri: Uri, val weight: Float = 1.0f)
-
-private fun getCleanFileName(uri: Uri): String {
-    val fileName = uri.lastPathSegment ?: "Unknown file"
-    return if (fileName.startsWith("primary:")) {
-        fileName.removePrefix("primary:")
-    } else {
-        fileName
-    }
-}
 
 @Composable
 private fun DeleteConfirmDialog(
@@ -236,7 +237,7 @@ private fun RenameModelDialog(
     ExperimentalFoundationApi::class,
 )
 @Composable
-fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier) {
+fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier, settingsPage: Boolean = false) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
@@ -255,10 +256,6 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
     val msgFileDeleted = stringResource(R.string.file_deleted)
     val msgEmbeddingDeleted = stringResource(R.string.embedding_deleted)
     val msgEmbeddingImported = stringResource(R.string.embedding_imported)
-    val msgModelConversionSuccess = stringResource(R.string.model_conversion_success)
-    val msgModelConversionFailed = stringResource(R.string.model_conversion_failed)
-    val msgNpuModelAddedSuccess = stringResource(R.string.npu_model_added_success)
-    val msgNpuModelAddFailed = stringResource(R.string.npu_model_add_failed)
     val msgDeleteSuccess = stringResource(R.string.delete_success)
     val msgDeleteFailed = stringResource(R.string.delete_failed)
     val msgUnsupportNpu = stringResource(R.string.unsupport_npu)
@@ -287,18 +284,12 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
     val scrollBehavior =
         TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
-    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(settingsPage) }
     var showFileManagerDialog by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var showCleanTempDialog by remember { mutableStateOf(false) }
     var tempScanBytes by remember { mutableLongStateOf(0L) }
     var showEmbeddingManagerDialog by remember { mutableStateOf(false) }
-    var showCustomModelDialog by remember { mutableStateOf(false) }
-    var showCustomNpuModelDialog by remember { mutableStateOf(false) }
-    var showDitImportDialog by remember { mutableStateOf(false) }
-    var isConverting by remember { mutableStateOf(false) }
-    var conversionProgress by remember { mutableStateOf("") }
-    var extractByteProgress by remember { mutableStateOf<ExtractByteProgress?>(null) }
     var tempBaseUrl by remember { mutableStateOf("") }
     var selectedSource by remember { mutableStateOf("huggingface") }
     val generationPreferences = remember { GenerationPreferences(context) }
@@ -568,103 +559,6 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
         CapturedLogsDialog(logs = capturedLogs, onDismiss = { LogCapture.consume() })
     }
 
-    if (showCustomModelDialog) {
-        CustomModelDialog(
-            context,
-            onDismiss = { showCustomModelDialog = false },
-            onModelAdded = { modelName, fileUri, clipSkip, loraFiles ->
-                showCustomModelDialog = false
-                scope.launch {
-                    convertCustomModel(
-                        context = context,
-                        modelName = modelName,
-                        fileUri = fileUri,
-                        clipSkip = clipSkip,
-                        loraFiles = loraFiles,
-                        onProgress = { progress ->
-                            conversionProgress = progress
-                        },
-                        onStart = {
-                            isConverting = true
-                        },
-                        onSuccess = {
-                            isConverting = false
-                            scope.launch {
-                                modelRepository.refreshAllModels()
-                                snackbarHostState.showSnackbar(msgModelConversionSuccess)
-                            }
-                        },
-                        onError = { error ->
-                            isConverting = false
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    msgModelConversionFailed.format(error),
-                                )
-                            }
-                        },
-                    )
-                }
-            },
-        )
-    }
-
-    if (showDitImportDialog) {
-        DitImportDialog(
-            context = context,
-            onDismiss = { showDitImportDialog = false },
-            onImported = {
-                scope.launch {
-                    modelRepository.refreshAllModels()
-                    snackbarHostState.showSnackbar(context.getString(R.string.dit_import_success))
-                }
-            },
-        )
-    }
-
-    if (showCustomNpuModelDialog) {
-        CustomNpuModelDialog(
-            context,
-            onDismiss = { showCustomNpuModelDialog = false },
-            onModelAdded = { modelName, zipUri ->
-                showCustomNpuModelDialog = false
-                scope.launch {
-                    extractNpuModel(
-                        context = context,
-                        modelName = modelName,
-                        zipUri = zipUri,
-                        onProgress = { progress ->
-                            conversionProgress = progress
-                        },
-                        onByteProgress = { extracted, total, fraction ->
-                            extractByteProgress = ExtractByteProgress(extracted, total, fraction)
-                        },
-                        onStart = {
-                            extractByteProgress = null
-                            isConverting = true
-                        },
-                        onSuccess = {
-                            isConverting = false
-                            extractByteProgress = null
-                            scope.launch {
-                                modelRepository.refreshAllModels()
-                                snackbarHostState.showSnackbar(msgNpuModelAddedSuccess)
-                            }
-                        },
-                        onError = { error ->
-                            isConverting = false
-                            extractByteProgress = null
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    msgNpuModelAddFailed.format(error),
-                                )
-                            }
-                        },
-                    )
-                }
-            },
-        )
-    }
-
     if (showDeleteConfirm && selectedModels.isNotEmpty()) {
         DeleteConfirmDialog(
             selectedCount = selectedModels.size,
@@ -762,377 +656,345 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
         }
     }
 
-    Scaffold(
-        topBar = {
-            LargeTopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = "Local Dream✨",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = if (isSelectionMode) {
-                                pluralStringResource(
-                                    R.plurals.selected_items,
-                                    selectedModels.size,
-                                    selectedModels.size,
-                                )
-                            } else {
-                                stringResource(R.string.available_models)
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    if (isSelectionMode) {
-                        IconButton(onClick = {
-                            isSelectionMode = false
-                            selectedModels = emptySet()
-                        }) {
-                            Icon(Icons.Default.Close, stringResource(R.string.cancel))
-                        }
-                    }
-                },
-                actions = {
-                    if (isSelectionMode) {
-                        if (selectedModels.isNotEmpty()) {
-                            // Left to right: pin, rename (single custom only), delete.
-                            val allPinned = selectedModels.all { it.id in pinnedIds }
-                            IconButton(onClick = {
-                                val ids = selectedModels.map { it.id }
-                                if (allPinned) {
-                                    PinnedModels.unpin(context, ids)
-                                } else {
-                                    PinnedModels.pin(context, ids)
-                                }
-                                pinnedIds = PinnedModels.get(context)
+    if (!settingsPage) {
+        Scaffold(
+            topBar = {
+                io.github.xororz.localdream.ui.design.DreamToolbar(
+                    title = stringResource(R.string.ui_model_library),
+                    onBack = if (isSelectionMode) {
+                        (
+                            {
                                 isSelectionMode = false
                                 selectedModels = emptySet()
-                            }) {
-                                Icon(
-                                    imageVector = if (allPinned) {
-                                        Icons.Default.PushPin
-                                    } else {
-                                        Icons.Outlined.PushPin
-                                    },
-                                    contentDescription = stringResource(
-                                        if (allPinned) {
-                                            R.string.unpin_from_top
-                                        } else {
-                                            R.string.pin_to_top
-                                        },
-                                    ),
-                                )
                             }
+                            )
+                    } else {
+                        null
+                    },
+                    actions = {
+                        if (isSelectionMode) {
+                            if (selectedModels.isNotEmpty()) {
+                                // Left to right: pin, rename (single custom only), delete.
+                                val allPinned = selectedModels.all { it.id in pinnedIds }
+                                IconButton(onClick = {
+                                    val ids = selectedModels.map { it.id }
+                                    if (allPinned) {
+                                        PinnedModels.unpin(context, ids)
+                                    } else {
+                                        PinnedModels.pin(context, ids)
+                                    }
+                                    pinnedIds = PinnedModels.get(context)
+                                    isSelectionMode = false
+                                    selectedModels = emptySet()
+                                }) {
+                                    Icon(
+                                        imageVector = if (allPinned) {
+                                            Icons.Default.PushPin
+                                        } else {
+                                            Icons.Outlined.PushPin
+                                        },
+                                        contentDescription = stringResource(
+                                            if (allPinned) {
+                                                R.string.unpin_from_top
+                                            } else {
+                                                R.string.pin_to_top
+                                            },
+                                        ),
+                                    )
+                                }
 
-                            val singleSelected = selectedModels.singleOrNull()
-                            if (singleSelected != null && singleSelected.isCustom) {
-                                IconButton(onClick = { renameTarget = singleSelected }) {
-                                    Icon(Icons.Default.Edit, stringResource(R.string.rename))
+                                val singleSelected = selectedModels.singleOrNull()
+                                if (singleSelected != null && singleSelected.isCustom) {
+                                    IconButton(onClick = { renameTarget = singleSelected }) {
+                                        Icon(Icons.Default.Edit, stringResource(R.string.rename))
+                                    }
+                                }
+
+                                IconButton(onClick = { showDeleteConfirm = true }) {
+                                    Icon(Icons.Default.Delete, stringResource(R.string.delete))
                                 }
                             }
-
-                            IconButton(onClick = { showDeleteConfirm = true }) {
-                                Icon(Icons.Default.Delete, stringResource(R.string.delete))
+                        } else {
+                            // A single overflow menu keeps the collapsed large top
+                            // bar's title from being squeezed by multiple action
+                            // icons competing for width.
+                            var menuExpanded by remember { mutableStateOf(false) }
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
                             }
-                        }
-                    } else {
-                        // A single overflow menu keeps the collapsed large top
-                        // bar's title from being squeezed by multiple action
-                        // icons competing for width.
-                        var menuExpanded by remember { mutableStateOf(false) }
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = stringResource(R.string.more_options),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.help)) },
-                                leadingIcon = {
-                                    Icon(Icons.AutoMirrored.Filled.Help, contentDescription = null)
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    showHelpDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.history_tab)) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.History, contentDescription = null)
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    navController.navigate(Screen.History.route)
-                                },
-                            )
-                            // In connected-device mode the standalone upscale
-                            // page runs on the host's NPU, so it is offered
-                            // when the host has an upscaler installed; locally
-                            // it needs this device's Qualcomm NPU.
-                            val showUpscaleEntry = if (remoteActive) {
-                                remoteRepository.upscalerPaths.isNotEmpty()
-                            } else {
-                                Model.isQualcommDevice()
-                            }
-                            if (showUpscaleEntry) {
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                            ) {
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.image_upscale)) },
+                                    text = { Text(stringResource(R.string.help)) },
                                     leadingIcon = {
-                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null)
+                                        Icon(Icons.AutoMirrored.Filled.Help, contentDescription = null)
                                     },
                                     onClick = {
                                         menuExpanded = false
-                                        navController.navigate(Screen.Upscale.route)
+                                        showHelpDialog = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.history_tab)) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.History, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        navController.navigate(Screen.History.route)
+                                    },
+                                )
+                                // In connected-device mode the standalone upscale
+                                // page runs on the host's NPU, so it is offered
+                                // when the host has an upscaler installed; locally
+                                // it needs this device's Qualcomm NPU.
+                                val showUpscaleEntry = if (remoteActive) {
+                                    remoteRepository.upscalerPaths.isNotEmpty()
+                                } else {
+                                    Model.isQualcommDevice()
+                                }
+                                if (showUpscaleEntry) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.image_upscale)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.AutoFixHigh, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            menuExpanded = false
+                                            navController.navigate(Screen.Upscale.route)
+                                        },
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.remote_link)) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Devices, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        navController.navigate(Screen.RemoteLink.route)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.settings)) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Settings, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        navController.navigate(Screen.Settings.route)
                                     },
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.remote_link)) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Devices, contentDescription = null)
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    navController.navigate(Screen.RemoteLink.route)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.settings)) },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Settings, contentDescription = null)
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    showSettingsDialog = true
-                                },
-                            )
                         }
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { paddingValues ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
-        ) {
-            if (remoteActive) {
-                RemoteModeBanner(
-                    deviceName = remoteRepository.connection?.deviceName ?: "",
-                    online = remoteRepository.online,
-                    refreshing = remoteRepository.refreshing,
-                    onRefresh = { scope.launch { remoteRepository.refresh() } },
-                    onDisconnect = { remoteRepository.disconnect() },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    },
                 )
-            }
-            PrimaryTabRow(
-                selectedTabIndex = pagerState.currentPage,
-                modifier = Modifier.fillMaxWidth(),
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { paddingValues ->
+            Column(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
             ) {
-                tabTitles.forEachIndexed { index, title ->
-                    Tab(
-                        selected = pagerState.currentPage == index,
-                        onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(index)
-                            }
-                        },
-                        text = {
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                        },
+                if (remoteActive) {
+                    RemoteModeBanner(
+                        deviceName = remoteRepository.connection?.deviceName ?: "",
+                        online = remoteRepository.online,
+                        refreshing = remoteRepository.refreshing,
+                        onRefresh = { scope.launch { remoteRepository.refresh() } },
+                        onDisconnect = { remoteRepository.disconnect() },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
-            }
-
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.weight(1f),
-            ) { page ->
-                val models = when (page) {
-                    0 -> cpuModels
-                    1 -> npuModels
-                    else -> ditModels
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("MNN", "QNN", "DiT").forEachIndexed { index, label ->
+                        io.github.xororz.localdream.ui.design.OutlinedButton(onClick = { scope.launch { pagerState.animateScrollToPage(index) } }) {
+                            Text(if (pagerState.currentPage == index) "✓ $label" else label)
+                        }
+                    }
                 }
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (page == 0 && !remoteActive) {
-                        item {
-                            AddCustomModelButton(
-                                onClick = { showCustomModelDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                ) { page ->
+                    val models = when (page) {
+                        0 -> cpuModels
+                        1 -> npuModels
+                        else -> ditModels
                     }
 
-                    if (page == 1 && !remoteActive) {
-                        item {
-                            AddModelOutlinedCard(
-                                label = stringResource(R.string.add_custom_npu_model),
-                                accent = true,
-                                onClick = { showCustomNpuModelDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (page == 0 && !remoteActive) {
+                            item {
+                                AddCustomModelButton(
+                                    onClick = { navController.navigate(Screen.ImportCheckpoint.route) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
-                    }
 
-                    if (page == 2 && !remoteActive && DitEngine.isSupportedDevice()) {
-                        item {
-                            AddModelOutlinedCard(
-                                label = stringResource(R.string.dit_import_title),
-                                accent = true,
-                                onClick = { showDitImportDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                        if (page == 1 && !remoteActive) {
+                            item {
+                                AddModelOutlinedCard(
+                                    label = stringResource(R.string.ui_import_title),
+                                    accent = true,
+                                    onClick = { navController.navigate(Screen.ImportArchive.route) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
-                    }
 
-                    items(
-                        items = models,
-                        key = { model -> model.id },
-                    ) { model ->
-                        ModelCard(
-                            model = model,
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = tween(Motion.DurationMedium),
-                                fadeOutSpec = tween(Motion.DurationMedium),
-                                placementSpec = Motion.springExpressiveSpatial(),
-                            ),
-                            isSelected = selectedModels.contains(model),
-                            isSelectionMode = isSelectionMode,
-                            isPinned = model.id in pinnedIds,
-                            onClick = {
-                                if (remoteActive) {
-                                    // The model runs on the host device, so this
-                                    // device's SoC support is irrelevant; just
-                                    // require the host to be reachable.
-                                    if (remoteRepository.online) {
-                                        navController.navigate(
-                                            Screen.ModelRun.createRoute(model.id, remote = true),
-                                        )
-                                    } else {
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar(msgRemoteOffline)
-                                        }
-                                    }
-                                    return@ModelCard
-                                }
-                                if (!Model.isDeviceSupported() && !model.runOnCpu && !model.isCustom) {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(msgUnsupportNpu)
-                                    }
-                                    return@ModelCard
-                                }
-                                if (isSelectionMode) {
-                                    if (model.isDownloaded) {
-                                        selectedModels = if (selectedModels.contains(model)) {
-                                            selectedModels - model
+                        if (page == 2 && !remoteActive && DitEngine.isSupportedDevice()) {
+                            item {
+                                AddModelOutlinedCard(
+                                    label = stringResource(R.string.ui_import_title),
+                                    accent = true,
+                                    onClick = { navController.navigate(Screen.ImportDiT.route) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+
+                        items(
+                            items = models,
+                            key = { model -> model.id },
+                        ) { model ->
+                            ModelCard(
+                                model = model,
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = tween(Motion.DurationMedium),
+                                    fadeOutSpec = tween(Motion.DurationMedium),
+                                    placementSpec = Motion.springExpressiveSpatial(),
+                                ),
+                                isSelected = selectedModels.contains(model),
+                                isSelectionMode = isSelectionMode,
+                                isPinned = model.id in pinnedIds,
+                                onClick = {
+                                    if (remoteActive) {
+                                        // The model runs on the host device, so this
+                                        // device's SoC support is irrelevant; just
+                                        // require the host to be reachable.
+                                        if (remoteRepository.online) {
+                                            navController.navigate(
+                                                Screen.ModelRun.createRoute(model.id, remote = true),
+                                            )
                                         } else {
-                                            selectedModels + model
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar(msgRemoteOffline)
+                                            }
                                         }
-
-                                        if (selectedModels.isEmpty()) {
-                                            isSelectionMode = false
-                                        }
+                                        return@ModelCard
                                     }
-                                } else {
-                                    if (!model.isDownloaded) {
-                                        showDownloadConfirm = model
+                                    if (!Model.isDeviceSupported() && !model.runOnCpu && !model.isCustom) {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(msgUnsupportNpu)
+                                        }
+                                        return@ModelCard
+                                    }
+                                    if (isSelectionMode) {
+                                        if (model.isDownloaded) {
+                                            selectedModels = if (selectedModels.contains(model)) {
+                                                selectedModels - model
+                                            } else {
+                                                selectedModels + model
+                                            }
+
+                                            if (selectedModels.isEmpty()) {
+                                                isSelectionMode = false
+                                            }
+                                        }
                                     } else {
-                                        navController.navigate(Screen.ModelRun.createRoute(model.id))
+                                        if (!model.isDownloaded) {
+                                            showDownloadConfirm = model
+                                        } else {
+                                            navController.navigate(Screen.ModelRun.createRoute(model.id))
+                                        }
                                     }
-                                }
-                            },
-                            onLongClick = {
-                                // Selection mode drives local file management
-                                // (pin/rename/delete); none of it applies to
-                                // the host's models.
-                                if (!remoteActive && model.isDownloaded && !isSelectionMode) {
-                                    isSelectionMode = true
-                                    selectedModels = setOf(model)
-                                }
-                            },
-                        )
-                    }
+                                },
+                                onLongClick = {
+                                    // Selection mode drives local file management
+                                    // (pin/rename/delete); none of it applies to
+                                    // the host's models.
+                                    if (!remoteActive && model.isDownloaded && !isSelectionMode) {
+                                        isSelectionMode = true
+                                        selectedModels = setOf(model)
+                                    }
+                                },
+                            )
+                        }
 
-                    if (models.isEmpty() && modelRepository.isLoaded) {
-                        item {
-                            var visible by remember { mutableStateOf(false) }
-                            LaunchedEffect(Unit) { visible = true }
-                            AnimatedVisibility(
-                                visible = visible,
-                                enter = fadeIn(animationSpec = Motion.Fade) + expandVertically(),
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 32.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        if (models.isEmpty() && modelRepository.isLoaded) {
+                            item {
+                                var visible by remember { mutableStateOf(false) }
+                                LaunchedEffect(Unit) { visible = true }
+                                AnimatedVisibility(
+                                    visible = visible,
+                                    enter = fadeIn(animationSpec = Motion.Fade) + expandVertically(),
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.SearchOff,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(48.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = when (page) {
-                                            0 -> stringResource(R.string.no_cpu_models)
-                                            1 -> stringResource(R.string.no_npu_models)
-                                            else -> stringResource(R.string.no_dit_models)
-                                        },
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SearchOff,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(48.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            text = when (page) {
+                                                0 -> stringResource(R.string.no_cpu_models)
+                                                1 -> stringResource(R.string.no_npu_models)
+                                                else -> stringResource(R.string.no_dit_models)
+                                            },
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            textAlign = TextAlign.Center,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                TabPageIndicator(
-                    pageCount = pagerState.pageCount,
-                    currentPage = pagerState.currentPage,
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    TabPageIndicator(
+                        pageCount = pagerState.pageCount,
+                        currentPage = pagerState.currentPage,
+                    )
+                }
             }
         }
     }
 
     // Settings overlay with predictive back support.
     // drawerOffset: 0f = fully open, 1f = fully off-screen to the right.
-    val drawerOffset = remember { Animatable(1f) }
+    val drawerOffset = remember { Animatable(if (settingsPage) 0f else 1f) }
     val drawerAnimSpec = tween<Float>(Motion.DurationLong, easing = Motion.Emphasized)
     LaunchedEffect(showSettingsDialog) {
         drawerOffset.animateTo(
@@ -1147,7 +1009,11 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                     drawerOffset.snapTo(event.progress)
                 }
                 // Committed: close the drawer; LaunchedEffect finishes the animation.
-                showSettingsDialog = false
+                if (settingsPage) {
+                    navController.popBackStackIfResumed()
+                } else {
+                    showSettingsDialog = false
+                }
             } catch (_: CancellationException) {
                 // Cancelled: slide back to open.
                 drawerOffset.animateTo(0f, animationSpec = drawerAnimSpec)
@@ -1165,17 +1031,15 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
             Scaffold(
                 modifier = Modifier.nestedScroll(settingsScrollBehavior.nestedScrollConnection),
                 topBar = {
-                    TopAppBar(
-                        title = { Text(stringResource(R.string.settings)) },
-                        navigationIcon = {
-                            IconButton(onClick = { showSettingsDialog = false }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    stringResource(R.string.back),
-                                )
+                    io.github.xororz.localdream.ui.design.DreamToolbar(
+                        title = stringResource(R.string.settings),
+                        onBack = {
+                            if (settingsPage) {
+                                navController.popBackStackIfResumed()
+                            } else {
+                                showSettingsDialog = false
                             }
                         },
-                        scrollBehavior = settingsScrollBehavior,
                     )
                 },
             ) { paddingValues ->
@@ -1871,34 +1735,6 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
         }
     })
 
-    BlockingProgressOverlay(visible = isConverting) {
-        val byteProgress = extractByteProgress
-        if (byteProgress != null) {
-            SmoothCircularWavyProgressIndicator(
-                progress = byteProgress.fraction,
-                modifier = Modifier.size(72.dp),
-            )
-            Text(
-                text = "${(byteProgress.fraction * 100).toInt()}%  ${formatBytes(byteProgress.extractedBytes)}",
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontFeatureSettings = "tnum",
-                ),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        } else {
-            ContainedLoadingIndicator()
-            Text(
-                text = if (conversionProgress.isNotEmpty()) {
-                    conversionProgress
-                } else {
-                    stringResource(R.string.converting)
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-    }
-
     BlockingProgressOverlay(
         visible = downloadingModel != null,
         minWidth = 320.dp,
@@ -2064,7 +1900,7 @@ fun TabPageIndicator(pageCount: Int, currentPage: Int, modifier: Modifier = Modi
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ModelCard(
     model: Model,
@@ -2075,206 +1911,37 @@ fun ModelCard(
     modifier: Modifier = Modifier,
     isPinned: Boolean = false,
 ) {
-    val isDisabledInSelection = !model.isDownloaded && isSelectionMode
-
-    val elevation by animateFloatAsState(
-        targetValue = if (isSelected) 4f else 1f,
-        animationSpec = Motion.springExpressiveSpatial(),
-        label = "CardElevationAnimation",
-    )
-
-    val targetContainer = when {
-        isSelected -> MaterialTheme.colorScheme.secondaryContainer
-        isDisabledInSelection -> MaterialTheme.colorScheme.surfaceContainerLow
-        else -> MaterialTheme.colorScheme.surfaceContainer
-    }
-    val backgroundColor by animateColorAsState(
-        targetValue = targetContainer,
-        animationSpec = tween(Motion.DurationMedium, easing = Motion.Standard),
-        label = "CardBackgroundColorAnimation",
-    )
-
-    val primaryContent = when {
-        isSelected -> MaterialTheme.colorScheme.onSecondaryContainer
-        isDisabledInSelection -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    val secondaryContent = when {
-        isSelected -> MaterialTheme.colorScheme.onSecondaryContainer
-        isDisabledInSelection -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    ElevatedCard(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = backgroundColor,
-            contentColor = primaryContent,
-        ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = elevation.dp,
-        ),
-        shape = MaterialTheme.shapes.large,
-    ) {
-        // The clickable lives inside the card so its press/ripple indication is
-        // clipped to the card's rounded shape. On the outer modifier the ripple
-        // would render as a rectangle and show square corners on long-press.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = {
-                        if (!isSelectionMode || model.isDownloaded) onClick()
-                    },
-                    onLongClick = {
-                        if (model.isDownloaded && !isSelectionMode) onLongClick()
-                    },
-                ),
+    val disabled = !model.isDownloaded && isSelectionMode
+    val foreground = if (disabled) MaterialTheme.colorScheme.onSurface.copy(alpha = .38f) else MaterialTheme.colorScheme.onSurface
+    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(
+            Modifier.fillMaxWidth().combinedClickable(onClick = { if (!disabled) onClick() }, onLongClick = { if (model.isDownloaded && !isSelectionMode) onLongClick() }).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Badge(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
-                containerColor = if (model.runOnCpu) {
-                    MaterialTheme.colorScheme.tertiaryContainer
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isPinned) Icon(Icons.Default.PushPin, stringResource(R.string.pin_to_top), Modifier.size(18.dp))
+                Text(model.name, Modifier.weight(1f), color = foreground, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (isSelectionMode && model.isDownloaded) {
+                    Checkbox(isSelected, { onClick() })
                 } else {
-                    MaterialTheme.colorScheme.primaryContainer
-                },
-                contentColor = if (model.runOnCpu) {
-                    MaterialTheme.colorScheme.onTertiaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                },
-            ) {
-                Text(
-                    text = if (model.runOnCpu) "CPU" else "NPU",
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (isPinned) {
-                        Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = stringResource(R.string.pin_to_top),
-                            tint = primaryContent,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    Text(
-                        text = model.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Normal,
-                        color = primaryContent,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = model.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    color = secondaryContent,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        InfoChip(
-                            icon = Icons.Default.SdStorage,
-                            label = model.approximateSize,
-                            color = secondaryContent,
-                        )
-                        InfoChip(
-                            icon = Icons.Default.AspectRatio,
-                            label = if (model.runOnCpu) {
-                                "128~512"
-                            } else {
-                                "${model.generationSize}×${model.generationSize}"
-                            },
-                            color = secondaryContent,
-                        )
-                    }
-
-                    when {
-                        model.isDownloaded -> {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                val statusColor =
-                                    if (isSelected) {
-                                        MaterialTheme.colorScheme.onSecondaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = "downloaded",
-                                        tint = statusColor,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.downloaded),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = statusColor,
-                                    )
-                                }
-                            }
-                        }
-
-                        else -> {
-                            InfoChip(
-                                icon = Icons.Default.CloudDownload,
-                                label = stringResource(R.string.download),
-                                color = secondaryContent,
-                            )
-                        }
-                    }
+                    Icon(if (model.isDownloaded) Icons.Default.CheckCircle else Icons.Default.CloudDownload, stringResource(if (model.isDownloaded) R.string.downloaded else R.string.download), Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
                 }
             }
+            Text(model.description, color = foreground.copy(alpha = .7f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${if (model.isDit) {
+                    "DiT"
+                } else if (model.runOnCpu) {
+                    "MNN"
+                } else {
+                    "QNN"
+                }} · ${model.approximateSize}",
+                color = foreground.copy(alpha = .7f),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-    }
-}
-
-@Composable
-private fun InfoChip(icon: ImageVector, label: String, color: Color) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-        )
     }
 }
 
@@ -2650,7 +2317,7 @@ private fun FileManagerDialog(context: Context, onDismiss: () -> Unit, onFileDel
 @Composable
 fun AddCustomModelButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     AddModelOutlinedCard(
-        label = stringResource(R.string.add_custom_model),
+        label = stringResource(R.string.ui_import_title),
         onClick = onClick,
         modifier = modifier,
         accent = false,
@@ -2665,7 +2332,7 @@ private fun AddModelOutlinedCard(label: String, onClick: () -> Unit, accent: Boo
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    OutlinedCard(
+    io.github.xororz.localdream.ui.design.Card(
         onClick = onClick,
         modifier = modifier,
         shape = MaterialTheme.shapes.large,
@@ -2689,386 +2356,13 @@ private fun AddModelOutlinedCard(label: String, onClick: () -> Unit, accent: Boo
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleSmall,
             )
         }
     }
 }
-
-@Composable
-fun CustomNpuModelDialog(context: Context, onDismiss: () -> Unit, onModelAdded: (String, Uri) -> Unit) {
-    var modelName by remember { mutableStateOf("") }
-    var selectedZipUri by remember { mutableStateOf<Uri?>(null) }
-    val isIdReserved = modelName.isNotBlank() &&
-        ModelRepository.isReservedModelId(modelName.replace(" ", ""), ModelStorage.ignoresCase(context))
-
-    val zipPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri ->
-        uri?.let {
-            selectedZipUri = it
-            if (modelName.isBlank()) {
-                getFileNameFromUri(context, it)?.let { fileName ->
-                    modelName = fileName.substringBeforeLast(".").substringBefore("_qnn")
-                }
-            }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.add_custom_npu_model)) },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                val hintText = stringResource(R.string.custom_npu_model_hint)
-                val linkColor = MaterialTheme.colorScheme.primary
-                val hintAnnotated = buildAnnotatedString {
-                    val urlRegex = Regex("https://[^\\s,，、。]+")
-                    var lastIndex = 0
-                    for (match in urlRegex.findAll(hintText)) {
-                        append(hintText.substring(lastIndex, match.range.first))
-                        withLink(
-                            LinkAnnotation.Url(
-                                url = match.value,
-                                styles = TextLinkStyles(
-                                    style = SpanStyle(
-                                        color = linkColor,
-                                        textDecoration = TextDecoration.Underline,
-                                    ),
-                                ),
-                            ),
-                        ) {
-                            append(match.value)
-                        }
-                        lastIndex = match.range.last + 1
-                    }
-                    append(hintText.substring(lastIndex))
-                }
-                Text(
-                    text = hintAnnotated,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                OutlinedTextField(
-                    value = modelName,
-                    onValueChange = { modelName = it },
-                    label = { Text(stringResource(R.string.custom_model_name)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.custom_model_name_hint)) },
-                    isError = isIdReserved,
-                    supportingText = if (isIdReserved) {
-                        { Text(stringResource(R.string.custom_model_id_reserved)) }
-                    } else {
-                        null
-                    },
-                )
-
-                FilledTonalButton(
-                    onClick = {
-                        zipPickerLauncher.launch("application/zip")
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = selectedZipUri?.let { stringResource(R.string.zip_file_selected) }
-                            ?: stringResource(R.string.select_zip_file),
-                    )
-                }
-
-                selectedZipUri?.let { uri ->
-                    Text(
-                        text = "Selected: ${getCleanFileName(uri)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (modelName.isNotBlank() && selectedZipUri != null && !isIdReserved) {
-                        onModelAdded(modelName, selectedZipUri!!)
-                    }
-                },
-                enabled = modelName.isNotBlank() && selectedZipUri != null && !isIdReserved,
-            ) {
-                Text(stringResource(R.string.add_model))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
-        },
-    )
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun CustomModelDialog(
-    context: Context,
-    onDismiss: () -> Unit,
-    onModelAdded: (String, Uri, Int, List<LoRAFile>) -> Unit,
-) {
-    var modelName by remember { mutableStateOf("") }
-    var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
-    var clipSkip by remember { mutableIntStateOf(1) }
-    var selectedLoraFiles by remember { mutableStateOf<List<LoRAFile>>(emptyList()) }
-    val isIdReserved = modelName.isNotBlank() &&
-        ModelRepository.isReservedModelId(modelName.replace(" ", ""), ModelStorage.ignoresCase(context))
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri ->
-        uri?.let {
-            selectedFileUri = it
-            if (modelName.isBlank()) {
-                getFileNameFromUri(context, it)?.let { fileName ->
-                    modelName = fileName.substringBeforeLast(".")
-                }
-            }
-        }
-    }
-
-    val loraPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri ->
-        uri?.let {
-            selectedLoraFiles = selectedLoraFiles + LoRAFile(it)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.add_custom_model)) },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.custom_model_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                OutlinedTextField(
-                    value = modelName,
-                    onValueChange = { modelName = it },
-                    label = { Text(stringResource(R.string.custom_model_name)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.custom_model_name_hint)) },
-                    isError = isIdReserved,
-                    supportingText = if (isIdReserved) {
-                        { Text(stringResource(R.string.custom_model_id_reserved)) }
-                    } else {
-                        null
-                    },
-                )
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(
-                            ButtonGroupDefaults.ConnectedSpaceBetween,
-                        ),
-                    ) {
-                        ToggleButton(
-                            checked = clipSkip == 1,
-                            onCheckedChange = { checked -> if (checked) clipSkip = 1 },
-                            shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Clip Skip 1")
-                        }
-                        ToggleButton(
-                            checked = clipSkip == 2,
-                            onCheckedChange = { checked -> if (checked) clipSkip = 2 },
-                            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Clip Skip 2")
-                        }
-                    }
-                    Text(
-                        text = stringResource(R.string.clip_skip_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-
-                FilledTonalButton(
-                    onClick = {
-                        filePickerLauncher.launch("application/octet-stream")
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = selectedFileUri?.let { stringResource(R.string.file_selected) }
-                            ?: stringResource(R.string.select_model_file),
-                    )
-                }
-
-                selectedFileUri?.let { uri ->
-                    Text(
-                        text = "Selected: ${getCleanFileName(uri)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = stringResource(R.string.lora_files_optional),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                    )
-
-                    FilledTonalButton(
-                        onClick = {
-                            loraPickerLauncher.launch("application/octet-stream")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.add_lora_file))
-                    }
-
-                    if (selectedLoraFiles.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.selected_lora_files),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        selectedLoraFiles.forEachIndexed { index, loraFile ->
-                            key(loraFile.uri.toString()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 2.dp),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = "${index + 1}. ${getCleanFileName(loraFile.uri)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.weight(1f),
-                                        )
-
-                                        IconButton(
-                                            onClick = {
-                                                selectedLoraFiles =
-                                                    selectedLoraFiles.filterIndexed { i, _ -> i != index }
-                                            },
-                                            modifier = Modifier.size(24.dp),
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Close,
-                                                contentDescription = "delete",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.error,
-                                            )
-                                        }
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.lora_weight),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-
-                                        Slider(
-                                            value = loraFile.weight,
-                                            onValueChange = { newWeight ->
-                                                selectedLoraFiles =
-                                                    selectedLoraFiles.mapIndexed { i, file ->
-                                                        if (i == index) file.copy(weight = newWeight) else file
-                                                    }
-                                            },
-                                            valueRange = 0f..2f,
-                                            steps = 39,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(24.dp),
-                                        )
-
-                                        Text(
-                                            text = "%.2f".format(loraFile.weight),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.width(35.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (modelName.isNotBlank() && selectedFileUri != null && !isIdReserved) {
-                        onModelAdded(modelName, selectedFileUri!!, clipSkip, selectedLoraFiles)
-                    }
-                },
-                enabled = modelName.isNotBlank() && selectedFileUri != null && !isIdReserved,
-            ) {
-                Text(stringResource(R.string.add_model))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
-        },
-    )
-}
-
-@Immutable
-data class ExtractByteProgress(val extractedBytes: Long, val totalCompressedBytes: Long, val fraction: Float)
 
 private class CountingInputStream(delegate: java.io.InputStream) : java.io.FilterInputStream(delegate) {
     @Volatile
@@ -3098,6 +2392,7 @@ suspend fun extractNpuModel(
     onSuccess: () -> Unit,
     onError: (String) -> Unit,
 ) = withContext(Dispatchers.IO) {
+    var ownedDirectory: File? = null
     try {
         withContext(Dispatchers.Main) {
             onStart()
@@ -3112,10 +2407,9 @@ suspend fun extractNpuModel(
         }
 
         val modelDir = File(modelsDir, modelId)
-        if (modelDir.exists()) {
-            modelDir.deleteRecursively()
-        }
-        modelDir.mkdirs()
+        require(modelId.isNotBlank() && modelId != "." && modelId != ".." && !modelId.contains('/') && !modelId.contains('\\')) { "Invalid model name" }
+        check(modelDir.mkdir()) { context.getString(R.string.rename_name_exists) }
+        ownedDirectory = modelDir
 
         val totalCompressedBytes: Long = try {
             context.contentResolver.openAssetFileDescriptor(zipUri, "r")?.use { it.length }
@@ -3198,11 +2492,7 @@ suspend fun extractNpuModel(
     } catch (e: Exception) {
         Log.e("NpuModelExtract", "Extraction failed", e)
 
-        val modelId = modelName.replace(" ", "")
-        val modelDir = File(Model.getModelsDir(context), modelId)
-        if (modelDir.exists()) {
-            modelDir.deleteRecursively()
-        }
+        ownedDirectory?.deleteRecursively()
 
         withContext(Dispatchers.Main) {
             onError(e.message ?: context.getString(R.string.unknown_error))
@@ -3483,6 +2773,7 @@ suspend fun convertCustomModel(
     onSuccess: () -> Unit,
     onError: (String) -> Unit,
 ) = withContext(Dispatchers.IO) {
+    var ownedDirectory: File? = null
     try {
         withContext(Dispatchers.Main) {
             onStart()
@@ -3497,10 +2788,9 @@ suspend fun convertCustomModel(
         }
 
         val modelDir = File(modelsDir, modelId)
-        if (modelDir.exists()) {
-            modelDir.deleteRecursively()
-        }
-        modelDir.mkdirs()
+        require(modelId.isNotBlank() && modelId != "." && modelId != ".." && !modelId.contains('/') && !modelId.contains('\\')) { "Invalid model name" }
+        check(modelDir.mkdir()) { context.getString(R.string.rename_name_exists) }
+        ownedDirectory = modelDir
 
         withContext(Dispatchers.Main) {
             onProgress(context.getString(R.string.copying_model_file))
@@ -3680,11 +2970,7 @@ suspend fun convertCustomModel(
     } catch (e: Exception) {
         Log.e("ModelConvert", "Conversion failed", e)
 
-        val modelId = modelName.replace(" ", "")
-        val modelDir = File(Model.getModelsDir(context), modelId)
-        if (modelDir.exists()) {
-            modelDir.deleteRecursively()
-        }
+        ownedDirectory?.deleteRecursively()
 
         withContext(Dispatchers.Main) {
             onError(e.message ?: context.getString(R.string.unknown_error))
@@ -3692,7 +2978,7 @@ suspend fun convertCustomModel(
     }
 }
 
-private fun getFileNameFromUri(context: Context, uri: Uri): String? = try {
+internal fun getFileNameFromUri(context: Context, uri: Uri): String? = try {
     when (uri.scheme) {
         "content" -> {
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -3755,34 +3041,22 @@ private fun SettingNavCard(icon: ImageVector, label: String, onClick: () -> Unit
 }
 
 @Composable
-private fun SwitchSettingRow(
+internal fun SwitchSettingRow(
     title: String,
     description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    var showDescription by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            IconButton(onClick = { showDescription = !showDescription }) {
+                Icon(Icons.Default.Info, stringResource(R.string.ui_setting_help))
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-        )
+        if (showDescription) Text(description, Modifier.padding(bottom = 12.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -67,11 +67,30 @@ fun LocalDreamTheme(themeState: ThemeState, content: @Composable () -> Unit) {
         else -> themeState.preset.scheme(darkTheme)
     }
 
-    MaterialExpressiveTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        shapes = Shapes,
-        motionScheme = MotionScheme.expressive(),
-        content = content,
-    )
+    val miuixColors = if (darkTheme) {
+        top.yukonga.miuix.kmp.theme.darkColorScheme(primary = colorScheme.primary)
+    } else {
+        top.yukonga.miuix.kmp.theme.lightColorScheme(primary = colorScheme.primary)
+    }
+    top.yukonga.miuix.kmp.theme.MiuixTheme(colors = miuixColors) {
+        MaterialExpressiveTheme(
+            colorScheme = colorScheme.copy(
+                background = miuixColors.surface,
+                surface = miuixColors.surface,
+                onSurface = miuixColors.onSurface,
+                onBackground = miuixColors.onSurface,
+                surfaceContainerLowest = miuixColors.background,
+                surfaceContainerLow = miuixColors.background,
+                surfaceContainer = miuixColors.background,
+                surfaceContainerHigh = miuixColors.secondaryVariant,
+                surfaceContainerHighest = miuixColors.secondaryContainer,
+                secondaryContainer = miuixColors.secondaryVariant,
+                onSecondaryContainer = miuixColors.onSecondaryVariant,
+            ),
+            typography = Typography,
+            shapes = Shapes,
+            motionScheme = MotionScheme.expressive(),
+            content = content,
+        )
+    }
 }

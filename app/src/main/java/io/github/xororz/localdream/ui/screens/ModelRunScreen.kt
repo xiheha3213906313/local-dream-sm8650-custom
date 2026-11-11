@@ -21,18 +21,13 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,7 +44,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,7 +53,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
@@ -74,30 +67,14 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -124,7 +101,6 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.scale
@@ -162,9 +138,16 @@ import io.github.xororz.localdream.ui.components.ImportParametersDialog
 import io.github.xororz.localdream.ui.components.OverlayIconButton
 import io.github.xororz.localdream.ui.components.ReproduceParametersDialog
 import io.github.xororz.localdream.ui.components.ShareParamsFlow
-import io.github.xororz.localdream.ui.components.SmoothLinearWavyProgressIndicator
 import io.github.xororz.localdream.ui.components.ZoomableImageOverlay
-import io.github.xororz.localdream.ui.theme.Motion
+import io.github.xororz.localdream.ui.design.Button
+import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.IconButton
+import io.github.xororz.localdream.ui.design.OutlinedButton
+import io.github.xororz.localdream.ui.design.Scaffold
+import io.github.xororz.localdream.ui.design.Slider
+import io.github.xororz.localdream.ui.design.Switch
+import io.github.xororz.localdream.ui.design.Text
+import io.github.xororz.localdream.ui.design.TextButton
 import io.github.xororz.localdream.utils.ImportedParams
 import io.github.xororz.localdream.utils.LogCapture
 import io.github.xororz.localdream.utils.ParamShare
@@ -363,7 +346,6 @@ fun ModelRunScreen(
     // Native-edit references are independent of the base image, so they track their
     // own decode state instead of sharing base64EncodeDone.
     var editReferencesLoading by remember { mutableStateOf(false) }
-    var showReferenceEditMenu by remember { mutableStateOf(false) }
     var base64EncodeDone by remember { mutableStateOf(false) }
     var returnedSeed by remember { mutableStateOf<Long?>(null) }
     var isRunning by remember { mutableStateOf(false) }
@@ -428,7 +410,6 @@ fun ModelRunScreen(
     var showResolutionChangeDialog by remember { mutableStateOf(false) }
     var pendingResolution by remember { mutableStateOf<Resolution?>(null) }
     var backendRestartTrigger by remember { mutableIntStateOf(0) }
-    var showAdvancedSettings by remember { mutableStateOf(false) }
 
     var isPreviewMode by remember { mutableStateOf(false) }
     val preferences = remember {
@@ -1654,7 +1635,7 @@ fun ModelRunScreen(
 
                     generationStartTime = null
 
-                    if (pagerState.currentPage == 0 && !showAdvancedSettings) {
+                    if (pagerState.currentPage == 0) {
                         try {
                             pagerState.animateScrollToPage(1)
                         } finally {
@@ -1798,7 +1779,6 @@ fun ModelRunScreen(
                 }
                 showResolutionChangeDialog = false
                 pendingResolution = null
-                showAdvancedSettings = false
             },
             onDismiss = {
                 showResolutionChangeDialog = false
@@ -1914,575 +1894,186 @@ fun ModelRunScreen(
         }
     }
 
-    // === Page Composable Functions ===
+    fun startGeneration() {
+        focusManager.clearFocus()
+        pendingUltrafix = false
+        Log.d(
+            "ModelRunScreen",
+            "start generation",
+        )
+        generationParamsTmp = GenerationParameters(
+            steps = steps.roundToInt(),
+            cfg = cfg,
+            seed = 0,
+            prompt = promptField.text,
+            negativePrompt = negativePromptField.text,
+            generationTime = "",
+            width = currentWidth,
+            height = currentHeight,
+            runOnCpu = model?.runOnCpu ?: false,
+            denoiseStrength = denoiseStrength,
+            useOpenCL = useOpenCL,
+            scheduler = scheduler,
+        )
+
+        Log.d(
+            "ModelRunScreen",
+            "start generation batch: $batchCounts times",
+        )
+
+        // If seed is set, only generate once regardless of batch count
+        val actualBatchCount =
+            if (seed.isNotBlank()) 1 else batchCounts
+
+        batchGenerationJob = coroutineScope.launch {
+            // Freeze the selected reference set for the
+            // whole batch and persist it immediately
+            // before the first service request. This
+            // also closes races with rapid thumbnail
+            // removals rewriting the scratch file.
+            val editReferencePayloads =
+                if (supportsReferenceEditing) {
+                    editReferenceImages.map { it.base64 }
+                } else {
+                    emptyList()
+                }
+            if (editReferencePayloads.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    val json = JSONArray()
+                    editReferencePayloads.forEach { json.put(it) }
+                    File(context.filesDir, "dit_references.json")
+                        .writeText(json.toString())
+                }
+            }
+            for (i in 0 until actualBatchCount) {
+                currentBatchIndex = i + 1
+                Log.d(
+                    "ModelRunScreen",
+                    "preparing batch $i",
+                )
+
+                // Update generationParamsTmp to reflect current parameters
+                // This allows parameters to be changed during batch execution
+                generationParamsTmp = GenerationParameters(
+                    steps = steps.roundToInt(),
+                    cfg = cfg,
+                    seed = 0,
+                    prompt = promptField.text,
+                    negativePrompt = negativePromptField.text,
+                    generationTime = "",
+                    width = currentWidth,
+                    height = currentHeight,
+                    runOnCpu = model?.runOnCpu ?: false,
+                    denoiseStrength = denoiseStrength,
+                    useOpenCL = useOpenCL,
+                    scheduler = scheduler,
+                )
+
+                val batchIntent = Intent(
+                    context,
+                    BackgroundGenerationService::class.java,
+                ).apply {
+                    putExtra("prompt", promptField.text)
+                    putExtra(
+                        "negative_prompt",
+                        negativePromptField.text,
+                    )
+                    putExtra("steps", steps.roundToInt())
+                    putExtra("cfg", cfg)
+                    seed.toLongOrNull()
+                        ?.let { putExtra("seed", it) }
+                    putExtra("width", currentWidth)
+                    putExtra("height", currentHeight)
+                    // Backend now crops progress previews to the
+                    // visible target rectangle, so the service must
+                    // decode each preview with the effective dims
+                    // (target_w/h), not the 1024 canvas size.
+                    putExtra("effective_width", effectiveWidth)
+                    putExtra("effective_height", effectiveHeight)
+                    putExtra(
+                        "denoise_strength",
+                        denoiseStrength,
+                    )
+                    putExtra("use_opencl", useOpenCL)
+                    putExtra("scheduler", scheduler)
+                    putExtra("aspect_ratio", aspectRatio)
+                    putExtra("batch_index", i)
+                    putExtra("backend_host", backendHost)
+                    if (editReferencePayloads.isNotEmpty()) {
+                        putExtra("has_reference_images", true)
+                    }
+                    if (selectedImageUri != null && base64EncodeDone) {
+                        putExtra("has_image", true)
+                        if (isInpaintMode && maskBitmap != null) {
+                            putExtra("has_mask", true)
+                        }
+                    }
+                }
+
+                Log.d(
+                    "ModelRunScreen",
+                    "start service - batch $i",
+                )
+
+                context.startForegroundService(batchIntent)
+                Log.d(
+                    "ModelRunScreen",
+                    "start service sent - batch $i",
+                )
+
+                BackgroundGenerationService.generationState
+                    .first { state ->
+                        state is GenerationState.Complete ||
+                            state is GenerationState.Error
+                    }
+
+                Log.d(
+                    "ModelRunScreen",
+                    "batch $i completed, waiting for service to stop",
+                )
+
+                // Wait for service to actually stop
+                val waitStartTime =
+                    System.currentTimeMillis()
+                val stopped = withTimeoutOrNull(5000L) {
+                    BackgroundGenerationService.isServiceRunning
+                        .first { !it }
+                }
+                if (stopped == null) {
+                    Log.w(
+                        "ModelRunScreen",
+                        "Timeout waiting for service to stop",
+                    )
+                }
+
+                Log.d(
+                    "ModelRunScreen",
+                    "service stopped, wait time: ${System.currentTimeMillis() - waitStartTime}ms",
+                )
+
+                BackgroundGenerationService.resetState()
+                Log.d(
+                    "ModelRunScreen",
+                    "service state reset, ready for next batch",
+                )
+            }
+            currentBatchIndex = 0
+            isRunning = false
+            Log.d(
+                "ModelRunScreen",
+                "all batches completed, isRunning set to false",
+            )
+        }
+    }
+
+    // === Fixed workspace presentation ===
     @Composable
-    fun PromptPage() {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                // Reserve the IME area so the scroll viewport ends above the
-                // keyboard; the focused prompt field is then scrolled above the IME
-                // (which also keeps its window position accurate for the popup).
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            AnimatedVisibility(
-                visible = intermediateBitmap == null,
-                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
-            ) {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(R.string.prompt_settings),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (useImg2img) {
-                                    // Native edit models take a base image and any number of
-                                    // references through one entry; a menu picks
-                                    // which one to add.
-                                    Box {
-                                        TextButton(
-                                            onClick = {
-                                                if (supportsReferenceEditing) {
-                                                    showReferenceEditMenu = true
-                                                } else {
-                                                    onSelectImageClick()
-                                                }
-                                            },
-                                            contentPadding = PaddingValues(
-                                                horizontal = 8.dp,
-                                                vertical = 8.dp,
-                                            ),
-                                        ) {
-                                            Text(
-                                                if (supportsReferenceEditing) {
-                                                    stringResource(R.string.flux_edit)
-                                                } else {
-                                                    "img2img"
-                                                },
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                modifier = Modifier.padding(end = 4.dp),
-                                            )
-                                            Icon(
-                                                Icons.Default.Image,
-                                                contentDescription = "select image",
-                                                modifier = Modifier.size(20.dp),
-                                            )
-                                        }
-                                        DropdownMenu(
-                                            expanded = showReferenceEditMenu,
-                                            onDismissRequest = { showReferenceEditMenu = false },
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.flux_base_image)) },
-                                                leadingIcon = {
-                                                    Icon(Icons.Default.Image, contentDescription = null)
-                                                },
-                                                onClick = {
-                                                    showReferenceEditMenu = false
-                                                    onSelectImageClick()
-                                                },
-                                            )
-                                            DropdownMenuItem(
-                                                text = {
-                                                    Text(stringResource(R.string.flux_reference_images))
-                                                },
-                                                leadingIcon = {
-                                                    Icon(
-                                                        Icons.Default.AddPhotoAlternate,
-                                                        contentDescription = null,
-                                                    )
-                                                },
-                                                enabled = !editReferencesLoading,
-                                                onClick = {
-                                                    showReferenceEditMenu = false
-                                                    onAddEditReferencesClick()
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-                                TextButton(
-                                    onClick = { showAdvancedSettings = true },
-                                    contentPadding = PaddingValues(
-                                        horizontal = 8.dp,
-                                        vertical = 8.dp,
-                                    ),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.advanced_settings),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(end = 4.dp),
-                                    )
-                                    Icon(
-                                        Icons.Default.Settings,
-                                        contentDescription = stringResource(R.string.settings),
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                            }
-                            if (showAdvancedSettings) {
-                                AdvancedSettingsDialog(
-                                    isSdxl = model?.usesFixedCanvas == true,
-                                    isDit = model?.isDit == true,
-                                    onDitWidthChange = onDitWidthChange,
-                                    onDitHeightChange = onDitHeightChange,
-                                    runOnCpu = model?.runOnCpu ?: false,
-                                    useImg2img = useImg2img,
-                                    isRunning = isRunning,
-                                    aspectRatio = aspectRatio,
-                                    availableResolutions = availableResolutions,
-                                    currentWidth = currentWidth,
-                                    currentHeight = currentHeight,
-                                    scheduler = scheduler,
-                                    steps = steps,
-                                    cfg = cfg,
-                                    useOpenCL = useOpenCL,
-                                    batchCounts = batchCounts,
-                                    denoiseStrength = denoiseStrength,
-                                    seed = seed,
-                                    returnedSeed = returnedSeed,
-                                    onAspectRatioSelected = { ratio ->
-                                        if (!isRunning && aspectRatio != ratio) {
-                                            aspectRatio = ratio
-                                            clearImg2imgState()
-                                            saveAllFields()
-                                        }
-                                    },
-                                    onCustomAspectRatioClick = {
-                                        if (!isRunning) {
-                                            showCustomAspectRatioDialog = true
-                                        }
-                                    },
-                                    onResolutionSelected = { resolution ->
-                                        if (!isRunning &&
-                                            (
-                                                resolution.width != currentWidth ||
-                                                    resolution.height != currentHeight
-                                                )
-                                        ) {
-                                            pendingResolution = resolution
-                                            showResolutionChangeDialog = true
-                                        }
-                                    },
-                                    onSchedulerChange = { value ->
-                                        scheduler = value
-                                        saveAllFields()
-                                    },
-                                    onStepsChange = onStepsChange,
-                                    onCfgChange = onCfgChange,
-                                    onSizeChange = onSizeChange,
-                                    onCpuSelected = {
-                                        useOpenCL = false
-                                        saveAllFields()
-                                    },
-                                    onGpuSelected = { showOpenCLWarningDialog = true },
-                                    onBatchCountsChange = onBatchCountsChange,
-                                    onDenoiseStrengthChange = onDenoiseStrengthChange,
-                                    onSeedChange = onSeedChange,
-                                    onUseLastSeed = {
-                                        seed = returnedSeed.toString()
-                                        saveAllFields()
-                                    },
-                                    onImportFromClipboard = {
-                                        val clipboard =
-                                            context.getSystemService(
-                                                Context.CLIPBOARD_SERVICE,
-                                            ) as? ClipboardManager
-                                        val raw = clipboard?.primaryClip
-                                            ?.takeIf { it.itemCount > 0 }
-                                            ?.getItemAt(0)
-                                            ?.coerceToText(context)
-                                            ?.toString()
-                                        val imported = ParamShare.tryDecode(raw)
-                                        if (imported != null) {
-                                            pendingImport = imported
-                                            clipboardImportChecked = true
-                                        } else {
-                                            Toast.makeText(
-                                                context,
-                                                msgImportNoParams,
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                        }
-                                    },
-                                    onShare = {
-                                        val currentMode = when {
-                                            supportsReferenceEditing && (selectedImageUri != null || editReferenceImages.isNotEmpty()) ->
-                                                GenerationMode.EDIT
-
-                                            isInpaintMode -> GenerationMode.INPAINT
-
-                                            selectedImageUri != null -> GenerationMode.IMG2IMG
-
-                                            else -> GenerationMode.TXT2IMG
-                                        }
-                                        shareSourceParams = GenerationParameters(
-                                            steps = steps.toInt(),
-                                            cfg = cfg,
-                                            seed = seed.toLongOrNull(),
-                                            prompt = promptField.text,
-                                            negativePrompt = negativePromptField.text,
-                                            generationTime = null,
-                                            width = currentWidth,
-                                            height = currentHeight,
-                                            runOnCpu = model?.runOnCpu ?: false,
-                                            denoiseStrength = denoiseStrength,
-                                            useOpenCL = useOpenCL,
-                                            scheduler = scheduler,
-                                            mode = currentMode,
-                                        )
-                                        shareSourceModelId = modelId
-                                    },
-                                    onReset = { showResetConfirmDialog = true },
-                                    onDismiss = { showAdvancedSettings = false },
-                                )
-                            }
-                        }
-
-                        ControlledPromptTagTextField(
-                            controller = promptField,
-                            autocompleteAvailable = tagAutocompleteAvailable,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = {
-                                PromptCountLabel(
-                                    label = stringResource(R.string.image_prompt),
-                                    count = promptField.tokenCount,
-                                    max = promptField.tokenMax,
-                                    showCount = promptField.text.isNotEmpty(),
-                                )
-                            },
-                        )
-
-                        ControlledPromptTagTextField(
-                            controller = negativePromptField,
-                            autocompleteAvailable = tagAutocompleteAvailable,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = {
-                                PromptCountLabel(
-                                    label = stringResource(R.string.negative_prompt),
-                                    count = negativePromptField.tokenCount,
-                                    max = negativePromptField.tokenMax,
-                                    showCount = negativePromptField.text.isNotEmpty(),
-                                )
-                            },
-                        )
-
-                        Button(
-                            onClick = {
-                                focusManager.clearFocus()
-                                pendingUltrafix = false
-                                Log.d(
-                                    "ModelRunScreen",
-                                    "start generation",
-                                )
-                                generationParamsTmp = GenerationParameters(
-                                    steps = steps.roundToInt(),
-                                    cfg = cfg,
-                                    seed = 0,
-                                    prompt = promptField.text,
-                                    negativePrompt = negativePromptField.text,
-                                    generationTime = "",
-                                    width = currentWidth,
-                                    height = currentHeight,
-                                    runOnCpu = model?.runOnCpu ?: false,
-                                    denoiseStrength = denoiseStrength,
-                                    useOpenCL = useOpenCL,
-                                    scheduler = scheduler,
-                                )
-
-                                Log.d(
-                                    "ModelRunScreen",
-                                    "start generation batch: $batchCounts times",
-                                )
-
-                                // If seed is set, only generate once regardless of batch count
-                                val actualBatchCount =
-                                    if (seed.isNotBlank()) 1 else batchCounts
-
-                                batchGenerationJob = coroutineScope.launch {
-                                    // Freeze the selected reference set for the
-                                    // whole batch and persist it immediately
-                                    // before the first service request. This
-                                    // also closes races with rapid thumbnail
-                                    // removals rewriting the scratch file.
-                                    val editReferencePayloads =
-                                        if (supportsReferenceEditing) {
-                                            editReferenceImages.map { it.base64 }
-                                        } else {
-                                            emptyList()
-                                        }
-                                    if (editReferencePayloads.isNotEmpty()) {
-                                        withContext(Dispatchers.IO) {
-                                            val json = JSONArray()
-                                            editReferencePayloads.forEach { json.put(it) }
-                                            File(context.filesDir, "dit_references.json")
-                                                .writeText(json.toString())
-                                        }
-                                    }
-                                    for (i in 0 until actualBatchCount) {
-                                        currentBatchIndex = i + 1
-                                        Log.d(
-                                            "ModelRunScreen",
-                                            "preparing batch $i",
-                                        )
-
-                                        // Update generationParamsTmp to reflect current parameters
-                                        // This allows parameters to be changed during batch execution
-                                        generationParamsTmp = GenerationParameters(
-                                            steps = steps.roundToInt(),
-                                            cfg = cfg,
-                                            seed = 0,
-                                            prompt = promptField.text,
-                                            negativePrompt = negativePromptField.text,
-                                            generationTime = "",
-                                            width = currentWidth,
-                                            height = currentHeight,
-                                            runOnCpu = model?.runOnCpu ?: false,
-                                            denoiseStrength = denoiseStrength,
-                                            useOpenCL = useOpenCL,
-                                            scheduler = scheduler,
-                                        )
-
-                                        val batchIntent = Intent(
-                                            context,
-                                            BackgroundGenerationService::class.java,
-                                        ).apply {
-                                            putExtra("prompt", promptField.text)
-                                            putExtra(
-                                                "negative_prompt",
-                                                negativePromptField.text,
-                                            )
-                                            putExtra("steps", steps.roundToInt())
-                                            putExtra("cfg", cfg)
-                                            seed.toLongOrNull()
-                                                ?.let { putExtra("seed", it) }
-                                            putExtra("width", currentWidth)
-                                            putExtra("height", currentHeight)
-                                            // Backend now crops progress previews to the
-                                            // visible target rectangle, so the service must
-                                            // decode each preview with the effective dims
-                                            // (target_w/h), not the 1024 canvas size.
-                                            putExtra("effective_width", effectiveWidth)
-                                            putExtra("effective_height", effectiveHeight)
-                                            putExtra(
-                                                "denoise_strength",
-                                                denoiseStrength,
-                                            )
-                                            putExtra("use_opencl", useOpenCL)
-                                            putExtra("scheduler", scheduler)
-                                            putExtra("aspect_ratio", aspectRatio)
-                                            putExtra("batch_index", i)
-                                            putExtra("backend_host", backendHost)
-                                            if (editReferencePayloads.isNotEmpty()) {
-                                                putExtra("has_reference_images", true)
-                                            }
-                                            if (selectedImageUri != null && base64EncodeDone) {
-                                                putExtra("has_image", true)
-                                                if (isInpaintMode && maskBitmap != null) {
-                                                    putExtra("has_mask", true)
-                                                }
-                                            }
-                                        }
-
-                                        Log.d(
-                                            "ModelRunScreen",
-                                            "start service - batch $i",
-                                        )
-
-                                        context.startForegroundService(batchIntent)
-                                        Log.d(
-                                            "ModelRunScreen",
-                                            "start service sent - batch $i",
-                                        )
-
-                                        BackgroundGenerationService.generationState
-                                            .first { state ->
-                                                state is GenerationState.Complete ||
-                                                    state is GenerationState.Error
-                                            }
-
-                                        Log.d(
-                                            "ModelRunScreen",
-                                            "batch $i completed, waiting for service to stop",
-                                        )
-
-                                        // Wait for service to actually stop
-                                        val waitStartTime =
-                                            System.currentTimeMillis()
-                                        val stopped = withTimeoutOrNull(5000L) {
-                                            BackgroundGenerationService.isServiceRunning
-                                                .first { !it }
-                                        }
-                                        if (stopped == null) {
-                                            Log.w(
-                                                "ModelRunScreen",
-                                                "Timeout waiting for service to stop",
-                                            )
-                                        }
-
-                                        Log.d(
-                                            "ModelRunScreen",
-                                            "service stopped, wait time: ${System.currentTimeMillis() - waitStartTime}ms",
-                                        )
-
-                                        BackgroundGenerationService.resetState()
-                                        Log.d(
-                                            "ModelRunScreen",
-                                            "service state reset, ready for next batch",
-                                        )
-                                    }
-                                    currentBatchIndex = 0
-                                    isRunning = false
-                                    Log.d(
-                                        "ModelRunScreen",
-                                        "all batches completed, isRunning set to false",
-                                    )
-                                }
-                            },
-                            enabled = serviceState !is GenerationState.Progress &&
-                                !isRunning && !isUpscaling && !isUltrafixPreparing &&
-                                (selectedImageUri == null || base64EncodeDone),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                        ) {
-                            AnimatedContent(
-                                targetState = serviceState is GenerationState.Progress || isUpscaling,
-                                transitionSpec = {
-                                    (
-                                        fadeIn(animationSpec = tween(Motion.DurationShort)) + scaleIn(
-                                            initialScale = 0.8f,
-                                            animationSpec = tween(Motion.DurationShort),
-                                        )
-                                        )
-                                        .togetherWith(
-                                            fadeOut(animationSpec = tween(Motion.DurationShort)) + scaleOut(
-                                                targetScale = 0.8f,
-                                                animationSpec = tween(Motion.DurationShort),
-                                            ),
-                                        )
-                                },
-                                label = "GenerateButtonContent",
-                            ) { isLoading ->
-                                if (isLoading) {
-                                    LoadingIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                } else {
-                                    Text(stringResource(R.string.generate_image))
-                                }
-                            }
-                        }
-                    }
-                }
+    fun ImageInputs() {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onSelectImageClick() }, enabled = !isRunning, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.ui_base_short)) }
+                if (supportsReferenceEditing) OutlinedButton(onClick = { onAddEditReferencesClick() }, enabled = !isRunning && !editReferencesLoading, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.ui_reference_short)) }
             }
-            AnimatedVisibility(
-                visible = errorMessage != null,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
-            ) {
-                errorMessage?.let { msg ->
-                    Card(
-                        onClick = { errorMessage = null },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.Error,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                            Text(
-                                msg,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                    }
-                }
-            }
-            AnimatedVisibility(
-                visible = isRunning,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
-            ) {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = if (currentBatchIndex > 0) {
-                                "${
-                                    stringResource(
-                                        R.string.generating,
-                                    )
-                                } ($currentBatchIndex/$batchCounts)…"
-                            } else {
-                                stringResource(
-                                    R.string.generating,
-                                )
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        SmoothLinearWavyProgressIndicator(
-                            progress = progress,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            "${(progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        intermediateBitmap?.let { bitmap ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Card(
-                                shape = MaterialTheme.shapes.small,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f),
-                            ) {
-                                Image(
-                                    bitmap = bitmap.asImageBitmap(),
-                                    contentDescription = "Generation Preview",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
             AnimatedVisibility(
                 visible = (selectedImageUri != null && base64EncodeDone) ||
                     editReferenceImages.isNotEmpty() || editReferencesLoading,
@@ -2492,7 +2083,7 @@ fun ModelRunScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 2.dp),
                 ) {
                     Row(
                         modifier = Modifier
@@ -2504,7 +2095,7 @@ fun ModelRunScreen(
                         if (selectedImageUri != null) {
                             Card(
                                 modifier = Modifier
-                                    .size(100.dp),
+                                    .size(64.dp),
                                 shape = MaterialTheme.shapes.small,
                             ) {
                                 Box {
@@ -2635,7 +2226,7 @@ fun ModelRunScreen(
                                             showInpaintScreen = true
                                         }
                                     },
-                                    modifier = Modifier.size(100.dp),
+                                    modifier = Modifier.size(64.dp),
                                     shape = MaterialTheme.shapes.small,
                                 ) {
                                     Box {
@@ -2687,7 +2278,7 @@ fun ModelRunScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
                                 Card(
-                                    modifier = Modifier.size(100.dp),
+                                    modifier = Modifier.size(64.dp),
                                     shape = MaterialTheme.shapes.small,
                                 ) {
                                     Box {
@@ -2764,6 +2355,141 @@ fun ModelRunScreen(
         }
     }
 
+    @Composable
+    fun PromptPage() {
+        GenerationWorkspace(
+            isSdxl = model?.usesFixedCanvas == true,
+            isDit = model?.isDit == true,
+            onDitWidthChange = onDitWidthChange,
+            onDitHeightChange = onDitHeightChange,
+            runOnCpu = model?.runOnCpu ?: false,
+            useImg2img = useImg2img,
+            isRunning = isRunning,
+            aspectRatio = aspectRatio,
+            availableResolutions = availableResolutions,
+            currentWidth = currentWidth,
+            currentHeight = currentHeight,
+            scheduler = scheduler,
+            steps = steps,
+            cfg = cfg,
+            useOpenCL = useOpenCL,
+            batchCounts = batchCounts,
+            denoiseStrength = denoiseStrength,
+            seed = seed,
+            returnedSeed = returnedSeed,
+            onAspectRatioSelected = { ratio ->
+                if (!isRunning && aspectRatio != ratio) {
+                    aspectRatio = ratio
+                    clearImg2imgState()
+                    saveAllFields()
+                }
+            },
+            onCustomAspectRatioClick = {
+                if (!isRunning) {
+                    showCustomAspectRatioDialog = true
+                }
+            },
+            onResolutionSelected = { resolution ->
+                if (!isRunning &&
+                    (
+                        resolution.width != currentWidth ||
+                            resolution.height != currentHeight
+                        )
+                ) {
+                    pendingResolution = resolution
+                    showResolutionChangeDialog = true
+                }
+            },
+            onSchedulerChange = { value ->
+                scheduler = value
+                saveAllFields()
+            },
+            onStepsChange = onStepsChange,
+            onCfgChange = onCfgChange,
+            onSizeChange = onSizeChange,
+            onCpuSelected = {
+                useOpenCL = false
+                saveAllFields()
+            },
+            onGpuSelected = { showOpenCLWarningDialog = true },
+            onBatchCountsChange = onBatchCountsChange,
+            onDenoiseStrengthChange = onDenoiseStrengthChange,
+            onSeedChange = onSeedChange,
+            onUseLastSeed = {
+                seed = returnedSeed.toString()
+                saveAllFields()
+            },
+            onImportFromClipboard = {
+                val clipboard =
+                    context.getSystemService(
+                        Context.CLIPBOARD_SERVICE,
+                    ) as? ClipboardManager
+                val raw = clipboard?.primaryClip
+                    ?.takeIf { it.itemCount > 0 }
+                    ?.getItemAt(0)
+                    ?.coerceToText(context)
+                    ?.toString()
+                val imported = ParamShare.tryDecode(raw)
+                if (imported != null) {
+                    pendingImport = imported
+                    clipboardImportChecked = true
+                } else {
+                    Toast.makeText(
+                        context,
+                        msgImportNoParams,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+            onShare = {
+                val currentMode = when {
+                    supportsReferenceEditing && (selectedImageUri != null || editReferenceImages.isNotEmpty()) ->
+                        GenerationMode.EDIT
+
+                    isInpaintMode -> GenerationMode.INPAINT
+
+                    selectedImageUri != null -> GenerationMode.IMG2IMG
+
+                    else -> GenerationMode.TXT2IMG
+                }
+                shareSourceParams = GenerationParameters(
+                    steps = steps.toInt(),
+                    cfg = cfg,
+                    seed = seed.toLongOrNull(),
+                    prompt = promptField.text,
+                    negativePrompt = negativePromptField.text,
+                    generationTime = null,
+                    width = currentWidth,
+                    height = currentHeight,
+                    runOnCpu = model?.runOnCpu ?: false,
+                    denoiseStrength = denoiseStrength,
+                    useOpenCL = useOpenCL,
+                    scheduler = scheduler,
+                    mode = currentMode,
+                )
+                shareSourceModelId = modelId
+            },
+            onReset = { showResetConfirmDialog = true },
+
+            modelName = model?.name.orEmpty(), description = model?.description.orEmpty(),
+            positive = {
+                ControlledPromptTagTextField(controller = promptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, label = {
+                    if (promptField.text.isNotEmpty()) Text("${promptField.tokenCount}/${promptField.tokenMax}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                })
+            },
+            negative = {
+                ControlledPromptTagTextField(controller = negativePromptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, label = {
+                    if (negativePromptField.text.isNotEmpty()) Text("${negativePromptField.tokenCount}/${negativePromptField.tokenMax}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                })
+            },
+            inputs = if (useImg2img) ({ ImageInputs() }) else null,
+            preview = if (intermediateBitmap != null) ({ intermediateBitmap?.let { Image(bitmap = it.asImageBitmap(), contentDescription = "Generation Preview", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } }) else null,
+            status = errorMessage,
+            positiveCount = if (promptField.text.isNotEmpty()) "${promptField.tokenCount}/${promptField.tokenMax}" else "",
+            negativeCount = if (negativePromptField.text.isNotEmpty()) "${negativePromptField.tokenCount}/${negativePromptField.tokenMax}" else "",
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2777,78 +2503,37 @@ fun ModelRunScreen(
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                LargeTopAppBar(
-                    title = {
-                        // Hide title when collapsed
-                        if (scrollBehavior.state.collapsedFraction < 0.5f) {
-                            Column {
-                                Text(
-                                    text = model?.name ?: "Running Model",
-                                    fontWeight = FontWeight.Normal,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                )
-                                Text(
-                                    text = model?.description ?: "",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                )
-                            }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = {
+                if (!io.github.xororz.localdream.ui.design.keyboardIsVisible()) {
+                    io.github.xororz.localdream.ui.design.DreamToolbar(model?.name ?: stringResource(R.string.ui_workspace_title), onBack = {
+                        if (isRunning) showInterruptDialog = true else handleExit()
+                    })
+                }
+            },
+            bottomBar = {
+                Column {
+                    if (pagerState.currentPage == 0) {
+                        io.github.xororz.localdream.ui.design.ActionDock(navigationInsets = false) {
                             if (isRunning) {
-                                showInterruptDialog = true
+                                androidx.compose.material3.LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                                OutlinedButton(onClick = { showInterruptDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("${stringResource(R.string.interrupt_generation)} · ${(progress * 100).toInt()}%") }
                             } else {
-                                handleExit()
-                            }
-                        }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back),
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    scrollBehavior = scrollBehavior,
-                    actions = {
-                        Row {
-                            val tabs = listOf(
-                                stringResource(R.string.prompt_tab),
-                                stringResource(R.string.result_tab),
-                                stringResource(R.string.history_tab),
-                            )
-                            tabs.forEachIndexed { index, label ->
-                                val selected = pagerState.currentPage == index
-                                TextButton(
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            focusManager.clearFocus()
-                                            pagerState.animateScrollToPage(index)
-                                        }
-                                    },
-                                    colors = ButtonDefaults.textButtonColors(
-                                        contentColor = if (selected) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
-                                    ),
-                                ) {
-                                    Text(label)
-                                }
+                                Button(
+                                    onClick = ::startGeneration,
+                                    enabled = model != null && serviceState !is GenerationState.Progress && !isUpscaling && !isUltrafixPreparing && (selectedImageUri == null || base64EncodeDone),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text(stringResource(R.string.generate_image)) }
                             }
                         }
-                    },
-                )
+                    }
+                    if (!io.github.xororz.localdream.ui.design.keyboardIsVisible()) {
+                        io.github.xororz.localdream.ui.design.WorkspaceNavigation(pagerState.currentPage) { index ->
+                            coroutineScope.launch {
+                                focusManager.clearFocus()
+                                pagerState.animateScrollToPage(index)
+                            }
+                        }
+                    }
+                }
             },
         ) { paddingValues ->
             if (model == null && isRemote && !isCheckingBackend) {
@@ -2872,6 +2557,7 @@ fun ModelRunScreen(
             if (model != null) {
                 HorizontalPager(
                     state = pagerState,
+                    userScrollEnabled = false,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues)
@@ -4009,16 +3695,5 @@ fun ModelRunScreen(
                 pendingImport = null
             },
         )
-    }
-}
-
-@Composable
-private fun PromptCountLabel(label: String, count: Int, max: Int, showCount: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label)
-        if (showCount) {
-            Spacer(Modifier.width(6.dp))
-            Text(if (max == 0) "$count/∞" else "$count/$max")
-        }
     }
 }

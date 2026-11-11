@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -16,12 +15,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -50,6 +45,8 @@ import io.github.xororz.localdream.ui.components.GenerationParamsDialog
 import io.github.xororz.localdream.ui.components.OverlayIconButton
 import io.github.xororz.localdream.ui.components.ShareParamsFlow
 import io.github.xororz.localdream.ui.components.ZoomableImageOverlay
+import io.github.xororz.localdream.ui.design.IconButton
+import io.github.xororz.localdream.ui.design.Scaffold
 import io.github.xororz.localdream.utils.saveImage
 import io.github.xororz.localdream.utils.saveImageFromFile
 import kotlinx.coroutines.Dispatchers
@@ -111,16 +108,9 @@ fun HistoryScreen(navController: NavController) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.history_tab)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStackIfResumed() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            stringResource(R.string.back),
-                        )
-                    }
-                },
+            io.github.xororz.localdream.ui.design.DreamToolbar(
+                title = stringResource(R.string.history_tab),
+                onBack = { navController.popBackStackIfResumed() },
                 actions = {
                     val advanced = historyFilter.hasAdvancedFilters()
                     IconButton(onClick = { showFilterSheet = true }) {
@@ -135,7 +125,6 @@ fun HistoryScreen(navController: NavController) {
                         )
                     }
                 },
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { paddingValues ->

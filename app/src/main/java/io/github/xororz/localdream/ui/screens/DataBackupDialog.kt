@@ -11,12 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +31,10 @@ import io.github.xororz.localdream.data.BackupFormatException
 import io.github.xororz.localdream.data.BackupImportResult
 import io.github.xororz.localdream.data.BackupStats
 import io.github.xororz.localdream.data.HistoryBackup
+import io.github.xororz.localdream.ui.design.FilledTonalButton
+import io.github.xororz.localdream.ui.design.OutlinedButton
+import io.github.xororz.localdream.ui.design.Text
+import io.github.xororz.localdream.ui.design.TextButton
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

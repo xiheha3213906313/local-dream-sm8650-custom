@@ -41,8 +41,8 @@ android {
         minSdk = 28
 //        minSdk = 31
         targetSdk = 36
-        versionCode = 83
-        versionName = "3.0.0-alpha.7.9"
+        versionCode = 84
+        versionName = "3.0.0-alpha.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -94,6 +94,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+            it.systemProperty("ui.screenshots.dir", layout.buildDirectory.dir("reports/ui-screenshots").get().asFile.absolutePath)
+        }
+    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -137,6 +144,8 @@ androidComponents {
 }
 
 dependencies {
+    implementation(libs.miuix.ui)
+    implementation(libs.miuix.preference)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -164,6 +173,8 @@ dependencies {
     implementation(libs.androidx.paging.runtime)
     implementation(libs.androidx.paging.compose)
 
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation(libs.androidx.ui.test.junit4)
     testImplementation(libs.junit)
     testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)

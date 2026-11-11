@@ -21,23 +21,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -71,6 +62,12 @@ import io.github.xororz.localdream.navigation.popBackStackIfResumed
 import io.github.xororz.localdream.remote.RemoteProtocol
 import io.github.xororz.localdream.service.BackendService
 import io.github.xororz.localdream.service.RemoteHostService
+import io.github.xororz.localdream.ui.design.Button
+import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.OutlinedButton
+import io.github.xororz.localdream.ui.design.OutlinedTextField
+import io.github.xororz.localdream.ui.design.Scaffold
+import io.github.xororz.localdream.ui.design.Text
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -117,17 +114,9 @@ fun RemoteScreen(navController: NavController, modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.remote_link)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStackIfResumed() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            stringResource(R.string.back),
-                        )
-                    }
-                },
-                scrollBehavior = scrollBehavior,
+            io.github.xororz.localdream.ui.design.DreamToolbar(
+                title = stringResource(R.string.remote_link),
+                onBack = { navController.popBackStackIfResumed() },
             )
         },
     ) { paddingValues ->

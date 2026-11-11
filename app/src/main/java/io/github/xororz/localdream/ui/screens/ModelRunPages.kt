@@ -18,6 +18,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -36,8 +37,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CheckCircleOutline
@@ -49,21 +48,14 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -75,10 +67,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
@@ -93,6 +83,12 @@ import coil.request.ImageRequest
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.HistoryFilter
 import io.github.xororz.localdream.data.HistoryItem
+import io.github.xororz.localdream.ui.design.Button
+import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.ElevatedCard
+import io.github.xororz.localdream.ui.design.IconButton
+import io.github.xororz.localdream.ui.design.OutlinedButton
+import io.github.xororz.localdream.ui.design.Text
 import io.github.xororz.localdream.ui.theme.Motion
 
 /** Result tab of the run screen: latest image, quick actions and recent thumbnails. */
@@ -129,7 +125,7 @@ internal fun ModelRunResultPage(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -195,76 +191,19 @@ internal fun ModelRunResultPage(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(R.string.result_tab),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
+                        Text(stringResource(R.string.result_tab), style = MaterialTheme.typography.titleMedium)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             currentBitmap?.let { bitmap ->
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(
-                                        8.dp,
-                                    ),
-                                ) {
-                                    if (isFavorite != null) {
-                                        FilledTonalIconButton(
-                                            onClick = onFavoriteClick,
-                                        ) {
-                                            Icon(
-                                                imageVector = if (isFavorite) {
-                                                    Icons.Default.Favorite
-                                                } else {
-                                                    Icons.Default.FavoriteBorder
-                                                },
-                                                contentDescription = "toggle favorite",
-                                            )
-                                        }
-                                    }
-
-                                    if (showReportButton) {
-                                        FilledTonalIconButton(
-                                            onClick = onReportClick,
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Report,
-                                                contentDescription = "report inappropriate content",
-                                            )
-                                        }
-                                    }
-
-                                    if (showUpscaleButton) {
-                                        LongPressableTonalIconButton(
-                                            enabled = upscaleEnabled,
-                                            onClick = onUpscaleClick,
-                                            onLongClick = onUpscaleLongClick,
-                                            icon = Icons.Default.AutoFixHigh,
-                                            contentDescription = "upscale image",
-                                        )
-                                    }
-
-                                    if (showUltrafixButton) {
-                                        LongPressableTonalIconButton(
-                                            enabled = ultrafixEnabled,
-                                            onClick = onUltrafixClick,
-                                            onLongClick = onUltrafixLongClick,
-                                            icon = Icons.Default.AutoAwesome,
-                                            contentDescription = "ultrafix image",
-                                        )
-                                    }
-
-                                    FilledTonalIconButton(
-                                        onClick = { onSaveClick(bitmap) },
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Save,
-                                            contentDescription = "save image",
-                                        )
+                                Button(onClick = { onSaveClick(bitmap) }) { Text(stringResource(R.string.save)) }
+                                if (isFavorite != null) {
+                                    OutlinedButton(onClick = onFavoriteClick) {
+                                        Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.ui_favorite))
                                     }
                                 }
+                                if (showUpscaleButton) OutlinedButton(onClick = onUpscaleClick, enabled = upscaleEnabled) { Text(stringResource(R.string.ui_upscale_short)) }
+                                if (showUltrafixButton) OutlinedButton(onClick = onUltrafixClick, enabled = ultrafixEnabled) { Text("UltraFix") }
+                                if (showUpscaleButton || showUltrafixButton) OutlinedButton(onClick = if (showUltrafixButton) onUltrafixLongClick else onUpscaleLongClick) { Text(stringResource(R.string.ui_import_image)) }
+                                if (showReportButton) OutlinedButton(onClick = onReportClick) { Icon(Icons.Default.Report, stringResource(R.string.ui_report)) }
                             }
                         }
 
@@ -725,41 +664,5 @@ internal fun ModelRunHistoryPage(
                 }
             }
         }
-    }
-}
-
-// FilledTonalIconButton look-alike with a long-press slot (M3 icon buttons
-// expose none). Both result-page image actions use it so a long press on
-// either can open the UltraFix local-image import dialog.
-@Composable
-private fun LongPressableTonalIconButton(
-    enabled: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    icon: ImageVector,
-    contentDescription: String,
-) {
-    val colors = IconButtonDefaults.filledTonalIconButtonColors()
-    Box(
-        modifier = Modifier
-            .minimumInteractiveComponentSize()
-            // Standard M3 icon-button container.
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(
-                if (enabled) colors.containerColor else colors.disabledContainerColor,
-            )
-            .combinedClickable(
-                enabled = enabled,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = if (enabled) colors.contentColor else colors.disabledContentColor,
-        )
     }
 }

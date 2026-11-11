@@ -18,6 +18,11 @@ sealed class Screen(val route: String) {
         fun createRoute(modelId: String, remote: Boolean = false) = "model_run/$modelId?remote=$remote"
     }
 
+    object ImportDiT : Screen("import/dit")
+    object ImportCheckpoint : Screen("import/checkpoint")
+    object ImportArchive : Screen("import/archive")
+    object Settings : Screen("settings")
+
     object Upscale : Screen("upscale")
 
     object History : Screen("history")

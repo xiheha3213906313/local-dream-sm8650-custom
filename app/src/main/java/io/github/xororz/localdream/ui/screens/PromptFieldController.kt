@@ -1,5 +1,6 @@
 package io.github.xororz.localdream.ui.screens
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -12,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import io.github.xororz.localdream.data.TagAutocompleteRepository
 import io.github.xororz.localdream.data.TagSuggestion
 import io.github.xororz.localdream.ui.components.PromptTagTextField
@@ -248,42 +250,54 @@ internal fun ControlledPromptTagTextField(
     autocompleteAvailable: Boolean,
     label: @Composable (() -> Unit),
     modifier: Modifier = Modifier,
+    fixedViewport: Boolean = false,
 ) {
     val popupVisible =
         autocompleteAvailable && controller.isFocused && !controller.popupDismissed
-    PromptTagTextField(
-        value = controller.fieldValue,
-        onValueChange = { controller.update(it) },
-        modifier = modifier,
-        label = label,
-        suggestions = controller.suggestions,
-        onSuggestionClick = controller::applySuggestion,
-        showSuggestions = popupVisible,
-        // Toolbar stays up even on an empty prompt so undo/redo remain reachable.
-        showToolbar = popupVisible,
-        highlightQuery = controller.activeQuery,
-        overflowOffset = controller.overflowOffset,
-        onFocusChanged = controller::onFocusChanged,
-        onDismissSuggestions = controller::dismissPopup,
-        onUndo = controller::undo,
-        onRedo = controller::redo,
-        undoEnabled = controller.undoEnabled,
-        redoEnabled = controller.redoEnabled,
-        onAddTag = {
-            controller.runTagAction(TagAutocompleteRepository::appendTagAfterActive)
-        },
-        onClearTag = {
-            controller.runTagAction(TagAutocompleteRepository::clearActiveTag)
-        },
-        onIncreaseWeight = {
-            controller.runTagAction { text, sel ->
-                TagAutocompleteRepository.adjustActiveTagWeight(text, sel, 0.1)
-            }
-        },
-        onDecreaseWeight = {
-            controller.runTagAction { text, sel ->
-                TagAutocompleteRepository.adjustActiveTagWeight(text, sel, -0.1)
-            }
-        },
-    )
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
+        val visibleLines = if (fixedViewport) {
+            val lineHeight = with(androidx.compose.ui.platform.LocalDensity.current) { androidx.compose.material3.MaterialTheme.typography.bodyLarge.lineHeight.toDp() }
+            ((maxHeight - 16.dp).value / lineHeight.value).toInt().coerceIn(1, 8)
+        } else {
+            2
+        }
+        PromptTagTextField(
+            value = controller.fieldValue,
+            onValueChange = { controller.update(it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { if (!fixedViewport) label() },
+            allowExpand = !fixedViewport,
+            maxCollapsedLines = visibleLines,
+            minCollapsedLines = visibleLines,
+            suggestions = controller.suggestions,
+            onSuggestionClick = controller::applySuggestion,
+            showSuggestions = popupVisible,
+            // Toolbar stays up even on an empty prompt so undo/redo remain reachable.
+            showToolbar = popupVisible,
+            highlightQuery = controller.activeQuery,
+            overflowOffset = controller.overflowOffset,
+            onFocusChanged = controller::onFocusChanged,
+            onDismissSuggestions = controller::dismissPopup,
+            onUndo = controller::undo,
+            onRedo = controller::redo,
+            undoEnabled = controller.undoEnabled,
+            redoEnabled = controller.redoEnabled,
+            onAddTag = {
+                controller.runTagAction(TagAutocompleteRepository::appendTagAfterActive)
+            },
+            onClearTag = {
+                controller.runTagAction(TagAutocompleteRepository::clearActiveTag)
+            },
+            onIncreaseWeight = {
+                controller.runTagAction { text, sel ->
+                    TagAutocompleteRepository.adjustActiveTagWeight(text, sel, 0.1)
+                }
+            },
+            onDecreaseWeight = {
+                controller.runTagAction { text, sel ->
+                    TagAutocompleteRepository.adjustActiveTagWeight(text, sel, -0.1)
+                }
+            },
+        )
+    }
 }

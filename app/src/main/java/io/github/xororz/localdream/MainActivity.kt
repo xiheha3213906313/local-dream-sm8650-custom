@@ -25,7 +25,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.xororz.localdream.data.MigrationState
 import io.github.xororz.localdream.navigation.Screen
+import io.github.xororz.localdream.ui.screens.DitImportScreen
 import io.github.xororz.localdream.ui.screens.HistoryScreen
+import io.github.xororz.localdream.ui.screens.LegacyImportScreen
 import io.github.xororz.localdream.ui.screens.MigrationScreen
 import io.github.xororz.localdream.ui.screens.ModelListScreen
 import io.github.xororz.localdream.ui.screens.ModelRunScreen
@@ -197,6 +199,10 @@ private fun AppContent() {
                 navController = navController,
             )
         }
+        composable(Screen.Settings.route) { ModelListScreen(navController, settingsPage = true) }
+        composable(Screen.ImportCheckpoint.route) { LegacyImportScreen(navController, archive = false) }
+        composable(Screen.ImportArchive.route) { LegacyImportScreen(navController, archive = true) }
+        composable(Screen.ImportDiT.route) { DitImportScreen(navController) }
         composable(Screen.Upscale.route) {
             UpscaleScreen(navController)
         }

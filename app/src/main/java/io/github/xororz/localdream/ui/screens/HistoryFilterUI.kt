@@ -22,9 +22,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
@@ -38,12 +36,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberDateRangePickerState
@@ -65,6 +59,12 @@ import io.github.xororz.localdream.data.DeviceFilter
 import io.github.xororz.localdream.data.FavoriteFilter
 import io.github.xororz.localdream.data.GenerationMode
 import io.github.xororz.localdream.data.HistoryFilter
+import io.github.xororz.localdream.ui.design.Button
+import io.github.xororz.localdream.ui.design.Checkbox
+import io.github.xororz.localdream.ui.design.OutlinedButton
+import io.github.xororz.localdream.ui.design.OutlinedTextField
+import io.github.xororz.localdream.ui.design.Text
+import io.github.xororz.localdream.ui.design.TextButton
 import io.github.xororz.localdream.utils.schedulerDisplayName
 import java.text.SimpleDateFormat
 import java.util.Date
