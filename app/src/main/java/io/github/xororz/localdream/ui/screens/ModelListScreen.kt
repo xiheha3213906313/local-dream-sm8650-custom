@@ -24,6 +24,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -825,7 +826,13 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                         else -> ditModels
                     }
 
+                    // Start with the import row just above the viewport. A normal downward
+                    // list drag reveals it; no parent consumes the list's scrolling gestures.
+                    if (!remoteActive && !modelRepository.isLoaded) return@HorizontalPager
+                    val hasImport = !remoteActive && (page != 2 || DitEngine.isSupportedDevice())
+                    val libraryState = rememberLazyListState(initialFirstVisibleItemIndex = if (hasImport && models.isNotEmpty()) 1 else 0)
                     LazyColumn(
+                        state = libraryState,
                         modifier = Modifier.fillMaxSize().testTag("model-library-list"),
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -834,7 +841,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                             item {
                                 AddCustomModelButton(
                                     onClick = { navController.navigate(Screen.ImportCheckpoint.route) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().testTag("model-import-entry"),
                                 )
                             }
                         }
@@ -845,7 +852,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                                     label = stringResource(R.string.ui_import_title),
                                     accent = true,
                                     onClick = { navController.navigate(Screen.ImportArchive.route) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().testTag("model-import-entry"),
                                 )
                             }
                         }
@@ -856,7 +863,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                                     label = stringResource(R.string.ui_import_title),
                                     accent = true,
                                     onClick = { navController.navigate(Screen.ImportDiT.route) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().testTag("model-import-entry"),
                                 )
                             }
                         }

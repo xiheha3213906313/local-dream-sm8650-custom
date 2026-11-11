@@ -2,11 +2,10 @@ package io.github.xororz.localdream.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -60,7 +58,7 @@ internal fun ExpandedParameter(
 ) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(open) {
-        progress.animateTo(if (open) 1f else 0f, tween(320, easing = FastOutSlowInEasing))
+        progress.animateTo(if (open) 1f else 0f, tween(if (open) 200 else 160, easing = CubicBezierEasing(.2f, 0f, 0f, 1f)))
         if (!open) onClosed()
     }
     BackHandler { onDismiss() }
@@ -68,7 +66,7 @@ internal fun ExpandedParameter(
     val targetWidth = (workspaceWidth - 32.dp).coerceAtLeast(160.dp)
     // A small card, with internal scrolling only on short screens or with the IME open.
     var measuredHeight by remember { mutableStateOf<Dp?>(null) }
-    val targetHeight by animateDpAsState((measuredHeight ?: preferredHeight).coerceAtMost(workspaceHeight - 16.dp).coerceAtLeast(120.dp), tween(220), label = "parameter-content-height")
+    val targetHeight by animateDpAsState((measuredHeight ?: preferredHeight).coerceAtMost(workspaceHeight - 16.dp).coerceAtLeast(120.dp), tween(140), label = "parameter-content-height")
     val targetLeft = with(density) { 16.dp.toPx() }
     val targetTop = with(density) {
         (source.top.toDp() - targetHeight + source.height.toDp()).coerceIn(8.dp, (workspaceHeight - targetHeight - 8.dp).coerceAtLeast(8.dp)).toPx()
@@ -77,7 +75,7 @@ internal fun ExpandedParameter(
     fun between(a: Float, b: Float) = a + (b - a) * fraction
     val width = with(density) { between(source.width, targetWidth.toPx()).toDp() }
     val height = with(density) { between(source.height, targetHeight.toPx()).toDp() }
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .22f * fraction)).clickable(onClick = onDismiss).testTag("parameter-editor-scrim"))
+    Box(Modifier.fillMaxSize().clickable(onClick = onDismiss).testTag("parameter-editor-scrim"))
     Surface(
         modifier = Modifier.offset { androidx.compose.ui.unit.IntOffset(between(source.left, targetLeft).roundToInt(), between(source.top, targetTop).roundToInt()) }
             .size(width, height).testTag("parameter-editor-card"),
@@ -89,8 +87,8 @@ internal fun ExpandedParameter(
     ) {
         // Measure the editor at its final size while the surface clips to the animated edges.
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
-            if (fraction < .65f) {
-                ParameterSummary(label, value, Modifier.fillMaxWidth().graphicsLayer { alpha = 1f - (fraction / .65f) })
+            if (fraction < .35f) {
+                ParameterSummary(label, value, Modifier.fillMaxWidth().graphicsLayer { alpha = 1f - (fraction / .35f) })
             }
             Column(
                 Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(targetWidth, targetHeight)
@@ -110,19 +108,29 @@ internal fun ExpandedParameter(
     }
 }
 
-/** A non-interactive copy above the touch point; the original tile keeps the pointer stream. */
+/** The same tile grows upward while its bottom edge stays at its original position. */
 @Composable
-internal fun LiftedParameter(label: String, value: String, source: Rect) {
+internal fun LiftedParameter(label: String, value: String, source: Rect, open: Boolean, onClosed: () -> Unit) {
     val density = LocalDensity.current
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(open) {
+        progress.animateTo(if (open) 1f else 0f, tween(160, easing = CubicBezierEasing(.2f, 0f, 0f, 1f)))
+        if (!open) onClosed()
+    }
+    val lift = with(density) { 44.dp.toPx().coerceAtMost(source.top) } * progress.value
     Surface(
-        Modifier.offset { androidx.compose.ui.unit.IntOffset(source.left.roundToInt(), (source.top - with(density) { 44.dp.toPx() }).roundToInt().coerceAtLeast(0)) }
-            .size(with(density) { source.width.toDp() }, with(density) { source.height.toDp() })
+        Modifier.offset { androidx.compose.ui.unit.IntOffset(source.left.roundToInt(), (source.top - lift).roundToInt()) }
+            .size(with(density) { source.width.toDp() }, with(density) { (source.height + lift).toDp() })
             .testTag("parameter-drag-preview"),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
-        shadowElevation = 12.dp,
-    ) { ParameterSummary(label, value, Modifier.fillMaxSize()) }
+        color = androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.surfaceContainerHighest, progress.value),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = progress.value)),
+        shadowElevation = 10.dp * progress.value,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
+            ParameterSummary(label, value, Modifier.fillMaxWidth().height(with(density) { source.height.toDp() }).testTag("parameter-drag-value"))
+        }
+    }
 }
 
 @Composable

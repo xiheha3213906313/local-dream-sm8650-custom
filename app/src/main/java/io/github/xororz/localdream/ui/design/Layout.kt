@@ -10,10 +10,14 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.IconButton
 
@@ -75,10 +79,10 @@ fun PageIntro(title: String, summary: String? = null) {
 }
 
 @Composable
-fun ActionDock(navigationInsets: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+fun ActionDock(navigationInsets: Boolean = true, imeInsets: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.surface) {
         Column(
-            Modifier.then(if (navigationInsets) Modifier.navigationBarsPadding() else Modifier).imePadding().padding(horizontal = 24.dp, vertical = 14.dp).fillMaxWidth(),
+            Modifier.then(if (navigationInsets) Modifier.navigationBarsPadding() else Modifier).then(if (imeInsets) Modifier.imePadding() else Modifier).padding(horizontal = 24.dp, vertical = 14.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             content = content,
         )
@@ -88,9 +92,26 @@ fun ActionDock(navigationInsets: Boolean = true, content: @Composable ColumnScop
 @Composable
 fun keyboardIsVisible(): Boolean = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
+/** One bottom clearance drives both IME travel and navigation, avoiding a late nav-height jump. */
+@Composable
+internal fun WorkspaceBottomBar(selectedIndex: Int, onSelected: (Int) -> Unit, imeBottomOverride: Dp? = null, action: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    val ime = imeBottomOverride ?: with(density) { WindowInsets.ime.getBottom(density).toDp() }
+    val navigationBottom = with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
+    val navigationHeight = 64.dp + navigationBottom
+    Column(Modifier.fillMaxWidth().testTag("workspace-bottom-bar")) {
+        if (selectedIndex == 0) ActionDock(navigationInsets = false, imeInsets = false) { action() }
+        Box(Modifier.fillMaxWidth().height(maxOf(ime, navigationHeight)), contentAlignment = Alignment.BottomCenter) {
+            Box(Modifier.graphicsLayer { alpha = (1f - ime.value / navigationHeight.value).coerceIn(0f, 1f) }) {
+                WorkspaceNavigation(selectedIndex, onSelected, enabled = ime == 0.dp)
+            }
+        }
+    }
+}
+
 /** Inline icon + label keeps navigation compact at large font scales. */
 @Composable
-fun WorkspaceNavigation(selectedIndex: Int, onSelected: (Int) -> Unit) {
+fun WorkspaceNavigation(selectedIndex: Int, onSelected: (Int) -> Unit, enabled: Boolean = true) {
     val labels = listOf(
         androidx.compose.ui.res.stringResource(io.github.xororz.localdream.R.string.ui_create),
         androidx.compose.ui.res.stringResource(io.github.xororz.localdream.R.string.ui_results),
@@ -106,7 +127,7 @@ fun WorkspaceNavigation(selectedIndex: Int, onSelected: (Int) -> Unit) {
             labels.forEachIndexed { index, label ->
                 val selected = index == selectedIndex
                 val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                Card(onClick = { onSelected(index) }, modifier = Modifier.weight(1f), colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent)) {
+                Card(onClick = { onSelected(index) }, enabled = enabled, modifier = Modifier.weight(1f), colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent)) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         Icon(icons[index], null, Modifier.size(18.dp), tint = color)
                         Spacer(Modifier.width(4.dp))

@@ -567,4 +567,9 @@
     <string name="ui_image_draw">Draw</string>
     <string name="ui_image_mask">Mask</string>
     <string name="ui_last_seed_value">Last seed: %1$s</string>
+    <string name="ui_lock_aspect">Lock aspect ratio</string>
+    <string name="ui_unlock_aspect">Unlock aspect ratio</string>
+    <string name="ui_favorited">Favorited</string>
+    <string name="ui_view_base">View base image</string>
+    <string name="ui_view_reference">View reference image</string>
 </resources>

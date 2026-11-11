@@ -1,6 +1,7 @@
 package io.github.xororz.localdream.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
@@ -44,7 +45,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         fun fonts() = listOf(arrayOf(1.0f), arrayOf(1.3f), arrayOf(1.5f), arrayOf(2.0f))
     }
 
-    private fun show(dark: Boolean = false, content: @androidx.compose.runtime.Composable () -> Unit) {
+    private fun show(dark: Boolean = false, haptics: androidx.compose.ui.hapticfeedback.HapticFeedback? = null, content: @androidx.compose.runtime.Composable () -> Unit) {
         val application = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         listOf(application.resources, compose.activity.resources).distinct().forEach { resources ->
             val config = android.content.res.Configuration(resources.configuration).apply { fontScale = scale }
@@ -55,7 +56,7 @@ class LargeFontLayoutTest(private val scale: Float) {
             LocalDreamTheme(ThemeState(dynamicColor = false, darkMode = if (dark) DarkModePreference.DARK else DarkModePreference.LIGHT)) {
                 val density = LocalDensity.current
                 val controller = androidx.compose.runtime.remember { ThemeController(ThemeState(dynamicColor = false)) {} }
-                CompositionLocalProvider(LocalDensity provides Density(density.density, scale), LocalThemeController provides controller) { content() }
+                CompositionLocalProvider(LocalDensity provides Density(density.density, scale), LocalThemeController provides controller, androidx.compose.ui.platform.LocalHapticFeedback provides (haptics ?: androidx.compose.ui.platform.LocalHapticFeedback.current)) { content() }
             }
         }
     }
@@ -265,7 +266,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         val start = compose.onNodeWithTag("parameter-editor-card").fetchSemanticsNode().boundsInRoot
         assertEquals(tile.width, start.width, 3f)
         assertEquals(tile.height, start.height, 3f)
-        compose.mainClock.advanceTimeBy(128)
+        compose.mainClock.advanceTimeBy(64)
         val middle = compose.onNodeWithTag("parameter-editor-card").fetchSemanticsNode().boundsInRoot
         assertTrue(middle.width > start.width)
         assertTrue(middle.height > start.height)
@@ -281,7 +282,7 @@ class LargeFontLayoutTest(private val scale: Float) {
             compose.mainClock.advanceTimeByFrame()
             compose.waitForIdle()
         }
-        compose.mainClock.advanceTimeBy(128)
+        compose.mainClock.advanceTimeBy(64)
         val closing = compose.onNodeWithTag("parameter-editor-card").fetchSemanticsNode().boundsInRoot
         assertTrue(closing.width < end.width)
         assertTrue(closing.width > tile.width)
@@ -299,7 +300,9 @@ class LargeFontLayoutTest(private val scale: Float) {
             moveBy(Offset(48f, 0f), delayMillis = 100)
         }
         val lifted = compose.onNodeWithTag("parameter-drag-preview").fetchSemanticsNode().boundsInRoot
-        assertTrue("Dragged value is obscured by the touch point", lifted.bottom < tile.center.y)
+        assertEquals("The original tile position became empty", tile.bottom, lifted.bottom, 1f)
+        val value = compose.onNodeWithTag("parameter-drag-value").fetchSemanticsNode().boundsInRoot
+        assertTrue("Dragged value is obscured by the touch point", value.bottom < tile.center.y)
         capture("dark-drag-lift")
         compose.onNodeWithTag("parameter-width").performTouchInput { up() }
         compose.onNodeWithTag("parameter-drag-preview").assertDoesNotExist()
@@ -334,6 +337,188 @@ class LargeFontLayoutTest(private val scale: Float) {
         compose.onNodeWithTag("parameter-runtime").assertTextContains("CPU")
     }
 
+    @Test fun widthHeightLockLinksDimensionsAndUnlockRestoresIndependentEditing() {
+        show { SampleWorkspace() }
+        compose.onNodeWithTag("aspect-ratio-lock").assertIsOff().performClick().assertIsOn()
+        compose.onNodeWithTag("parameter-width").performClick()
+        compose.onNodeWithTag("parameter-number-input").performTextReplacement("768")
+        compose.onNodeWithText("确定").performClick()
+        compose.onNodeWithTag("parameter-width").assertTextContains("768")
+        compose.onNodeWithTag("parameter-height").assertTextContains("768")
+        compose.onNodeWithTag("aspect-ratio-lock").performClick().assertIsOff()
+        compose.onNodeWithTag("parameter-height").performClick()
+        compose.onNodeWithTag("parameter-number-input").performTextReplacement("1024")
+        compose.onNodeWithText("确定").performClick()
+        compose.onNodeWithTag("parameter-width").assertTextContains("768")
+        compose.onNodeWithTag("parameter-height").assertTextContains("1024")
+        capture("v014-dimensions-lock")
+    }
+
+    @Test fun dragProvidesTickHapticsAndRetainsOriginalBottomEdge() {
+        val feedback = mutableListOf<androidx.compose.ui.hapticfeedback.HapticFeedbackType>()
+        show(
+            haptics = object : androidx.compose.ui.hapticfeedback.HapticFeedback {
+                override fun performHapticFeedback(hapticFeedbackType: androidx.compose.ui.hapticfeedback.HapticFeedbackType) {
+                    feedback += hapticFeedbackType
+                }
+            },
+        ) { SampleWorkspace() }
+        val tile = compose.onNodeWithTag("parameter-width").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("parameter-width").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(36f, 0f), delayMillis = 100)
+        }
+        compose.onNodeWithTag("parameter-width").performTouchInput { moveBy(Offset(12f, 0f), delayMillis = 100) }
+        val expanded = compose.onNodeWithTag("parameter-drag-preview").fetchSemanticsNode().boundsInRoot
+        assertEquals(tile.bottom, expanded.bottom, 1f)
+        assertTrue(expanded.height > tile.height)
+        assertTrue(feedback.count { it == androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove } >= 2)
+        capture("v014-drag-extended")
+        compose.onNodeWithTag("parameter-width").performTouchInput { up() }
+        compose.onNodeWithTag("parameter-drag-preview").assertDoesNotExist()
+    }
+
+    @Test fun dragExtensionAnimatesUpwardWithoutDetaching() {
+        var shown by androidx.compose.runtime.mutableStateOf(false)
+        var open by androidx.compose.runtime.mutableStateOf(true)
+        show {
+            Box(Modifier.fillMaxSize()) {
+                if (shown) LiftedParameter("宽度", "512", androidx.compose.ui.geometry.Rect(16f, 250f, 176f, 298f), open) { shown = false }
+            }
+        }
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { shown = true }
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(48)
+        val middle = compose.onNodeWithTag("parameter-drag-preview").fetchSemanticsNode().boundsInRoot
+        assertTrue(middle.height > 48f && middle.height < 92f)
+        assertEquals(298f, middle.bottom, 1f)
+        capture("v014-drag-transition")
+        compose.mainClock.advanceTimeBy(220)
+        compose.runOnIdle { open = false }
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(48)
+        val closing = compose.onNodeWithTag("parameter-drag-preview").fetchSemanticsNode().boundsInRoot
+        assertTrue(closing.height > 48f && closing.height < 92f)
+        assertEquals(298f, closing.bottom, 1f)
+        compose.mainClock.advanceTimeBy(220)
+        compose.onNodeWithTag("parameter-drag-preview").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun generationButtonStopsAtRestPositionDuringImeDismissal() {
+        var ime by androidx.compose.runtime.mutableStateOf(320.dp)
+        show {
+            Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+                WorkspaceBottomBar(0, {}, imeBottomOverride = ime) { Button({}, Modifier.fillMaxWidth().testTag("ime-generate")) { Text("生成图像") } }
+            }
+        }
+        var previous = Float.NEGATIVE_INFINITY
+        var stopped: Float? = null
+        listOf(320, 240, 160, 96, 64, 32, 16, 0).forEach { inset ->
+            compose.runOnIdle { ime = inset.dp }
+            val top = compose.onNodeWithTag("ime-generate").fetchSemanticsNode().boundsInRoot.top
+            assertTrue("Generate button reversed direction while IME closed", top >= previous)
+            previous = top
+            if (inset <= 32) {
+                if (stopped == null) stopped = top else assertEquals("Button overshot and jumped when navigation returned", stopped!!, top, 1f)
+            }
+        }
+        capture("v014-ime-rest")
+    }
+
+    @Test fun historyChoicesShareHeightAndKeepCornersDuringSelection() {
+        var filter by androidx.compose.runtime.mutableStateOf(HistoryFilter(modelIds = setOf("klein")))
+        show {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                HistoryFilterBar(filter, "klein", {}, { filter = filter.copy(modelIds = setOf("klein")) }, { filter = filter.copy(modelIds = null) })
+            }
+        }
+        val tags = listOf("history-scope-current", "history-scope-all", "history-filter-button")
+        val heights = tags.map { tag -> compose.onNodeWithTag(tag).getUnclippedBoundsInRoot().let { it.bottom - it.top } }
+        assertEquals(40.dp, heights.first())
+        assertTrue(heights.all { it == heights.first() })
+        compose.onNodeWithTag("history-scope-all").performScrollTo()
+        val corner = compose.onNodeWithTag("history-scope-all").fetchSemanticsNode().boundsInRoot.topLeft
+        capture("v014-history-choice-before")
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("history-scope-all").performClick()
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(64)
+        capture("v014-history-choice-transition")
+        fun cornerPixel(name: String): Int {
+            val file = File(System.getProperty("ui.screenshots.dir", "/tmp/miuix-screenshots"), "$name-$scale.png")
+            val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+            return bitmap.getPixel(corner.x.toInt() + 1, corner.y.toInt() + 1).also { bitmap.recycle() }
+        }
+        assertEquals("Selection briefly painted a rectangular corner", cornerPixel("v014-history-choice-before"), cornerPixel("v014-history-choice-transition"))
+        compose.mainClock.advanceTimeBy(200)
+        compose.onNodeWithTag("history-scope-all").assertIsSelected()
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun historyFilterButtonsRemainSelectableAndApply() {
+        var applied: HistoryFilter? = null
+        show { HistoryFilterSheet(HistoryFilter(), listOf("klein"), listOf("euler"), listOf("512x512"), { applied = it }, {}) }
+        compose.onNodeWithText("txt2img").assertHasClickAction().performClick().assertIsSelected()
+        capture("v014-history-filter", dialog = true)
+        compose.onNodeWithText("应用").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(setOf(GenerationMode.TXT2IMG), applied?.modes) }
+    }
+
+    @Test fun importedThumbnailOpensZoomViewerAndCloses() {
+        val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.rgb(70, 130, 180)) }
+        var preview by androidx.compose.runtime.mutableStateOf<Bitmap?>(null)
+        show {
+            Box(Modifier.fillMaxSize()) {
+                PreviewableInputCard(bitmap, "查看参考图", { preview = it }, Modifier.size(64.dp).testTag("input-thumbnail")) { Text("参考") }
+                preview?.let { InputImagePreview(it) { preview = null } }
+            }
+        }
+        compose.onNodeWithTag("input-thumbnail").performClick()
+        compose.onNodeWithTag("input-image-preview").assertIsDisplayed()
+        capture("v014-input-preview")
+        compose.onNodeWithContentDescription("关闭").performClick()
+        compose.onNodeWithTag("input-image-preview").assertDoesNotExist()
+    }
+
+    @Test fun modelLibraryImportIsRevealedByDownwardDrag() {
+        val dirs = openLibrary()
+        try {
+            compose.onNodeWithText("CPU").assertIsDisplayed()
+            compose.onNodeWithText("NPU").assertIsDisplayed()
+            compose.onNodeWithTag("model-import-entry").assertIsNotDisplayed()
+            compose.onNodeWithTag("model-library-list").performTouchInput { swipeDown(startY = height * .25f, endY = height * .8f, durationMillis = 500) }
+            compose.onNodeWithTag("model-import-entry").assertIsDisplayed().assertHasClickAction()
+            capture("v014-library-pull-import")
+        } finally {
+            dirs.forEach { it.deleteRecursively() }
+        }
+    }
+
+    @Test fun parameterCardDoesNotDarkenBackground() {
+        show { SampleWorkspace() }
+        capture("v014-card-background-before")
+        compose.onNodeWithTag("parameter-width").performClick()
+        capture("v014-card-background-open")
+        fun pixel(name: String): Int {
+            val file = File(System.getProperty("ui.screenshots.dir", "/tmp/miuix-screenshots"), "$name-$scale.png")
+            val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+            return bitmap.getPixel(4, 120).also { bitmap.recycle() }
+        }
+        assertEquals("Opening a parameter card dimmed the workspace", pixel("v014-card-background-before"), pixel("v014-card-background-open"))
+    }
+
     @Test fun modelTabsFillTheAvailableRow() {
         show { ModelFormatTabs(0, {}) }
         val first = compose.onNodeWithTag("model-format-0").fetchSemanticsNode().boundsInRoot
@@ -346,6 +531,9 @@ class LargeFontLayoutTest(private val scale: Float) {
     @androidx.compose.runtime.Composable
     private fun SampleWorkspace(onWidth: (Float) -> Unit = {}, cpuRuntime: Boolean = false) {
         var width by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(512f) }
+        var height by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(512f) }
+        var locked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        var ratio by androidx.compose.runtime.remember { androidx.compose.runtime.mutableDoubleStateOf(1.0) }
         var openCL by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
         var seed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
         var sampler by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("euler") }
@@ -363,13 +551,31 @@ class LargeFontLayoutTest(private val scale: Float) {
             Box(Modifier.fillMaxSize().padding(padding)) {
                 GenerationWorkspace(
                     isSdxl = false, isDit = !cpuRuntime, runOnCpu = cpuRuntime, useImg2img = true, isRunning = false,
-                    aspectRatio = "1:1", availableResolutions = emptyList(), currentWidth = width.toInt(), currentHeight = 512,
+                    aspectRatio = "1:1", availableResolutions = emptyList(), currentWidth = width.toInt(), currentHeight = height.toInt(),
+                    aspectLocked = locked, onAspectLockChange = {
+                        ratio = width.toDouble() / height
+                        locked = it
+                    },
                     scheduler = sampler, steps = 4f, cfg = 1f, useOpenCL = openCL, batchCounts = 1,
                     denoiseStrength = .6f, seed = seed, returnedSeed = 123L,
                     onAspectRatioSelected = {}, onCustomAspectRatioClick = {}, onResolutionSelected = {},
                     onDitWidthChange = {
-                        width = it
-                        onWidth(it)
+                        if (locked) {
+                            val pair = DitResolution.lockedSize(it, ratio, true)
+                            width = pair.first.toFloat()
+                            height = pair.second.toFloat()
+                        } else {
+                            width = it
+                        }
+                        onWidth(width)
+                    }, onDitHeightChange = {
+                        if (locked) {
+                            val pair = DitResolution.lockedSize(it, ratio, false)
+                            width = pair.first.toFloat()
+                            height = pair.second.toFloat()
+                        } else {
+                            height = it
+                        }
                     }, onSchedulerChange = { sampler = it }, onStepsChange = {}, onCfgChange = {}, onSizeChange = {},
                     onCpuSelected = { openCL = false }, onGpuSelected = { openCL = true }, onBatchCountsChange = {}, onDenoiseStrengthChange = {},
                     onSeedChange = { seed = it }, onUseLastSeed = { seed = "123" },
@@ -384,15 +590,18 @@ class LargeFontLayoutTest(private val scale: Float) {
 
     @Test fun resultDetailsCanBeReachedWithTouchScrolling() {
         var saved = false
+        var favorite by androidx.compose.runtime.mutableStateOf(false)
         val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.rgb(90, 140, 120)) }
         val params = GenerationParameters(4, 1f, 1711452183L, "a portrait", "", "146.4 seconds", 512, 512, false)
         show {
             DreamPage("Klein", bottomBar = { WorkspaceNavigation(1, {}) }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                    ModelRunResultPage(bitmap, 1, params, emptyList(), false, true, true, true, true, {}, {}, false, {}, {}, {}, {}, { saved = it === bitmap }, {}, {}, {}, {})
+                    ModelRunResultPage(bitmap, 1, params, emptyList(), false, true, true, true, true, {}, {}, favorite, { favorite = !favorite }, {}, {}, {}, { saved = it === bitmap }, {}, {}, {}, {})
                 }
             }
         }
+        compose.onNodeWithText("导入图片").assertDoesNotExist()
+        compose.onNodeWithTag("result-favorite").assertTextContains("收藏").performClick().assertIsSelected()
         compose.onNodeWithText("保存").performClick()
         compose.runOnIdle { assertTrue(saved) }
         repeat(3) { compose.onNodeWithTag("generation-result-scroll").performTouchInput { swipeUp() } }

@@ -556,4 +556,9 @@
     <string name="ui_image_draw">绘制</string>
     <string name="ui_image_mask">蒙版</string>
     <string name="ui_last_seed_value">上次种子：%1$s</string>
+    <string name="ui_lock_aspect">锁定宽高比</string>
+    <string name="ui_unlock_aspect">解锁宽高比</string>
+    <string name="ui_favorited">已收藏</string>
+    <string name="ui_view_base">查看底图</string>
+    <string name="ui_view_reference">查看参考图</string>
 </resources>

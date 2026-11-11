@@ -75,6 +75,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -82,6 +83,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,6 +93,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -106,6 +109,7 @@ import coil.request.ImageRequest
 import io.github.xororz.localdream.BuildConfig
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.DitEngine
+import io.github.xororz.localdream.data.DitResolution
 import io.github.xororz.localdream.data.GenerationDefaults
 import io.github.xororz.localdream.data.GenerationMode
 import io.github.xororz.localdream.data.GenerationPreferences
@@ -400,6 +404,9 @@ fun ModelRunScreen(
     var pendingResolution by remember { mutableStateOf<Resolution?>(null) }
     var backendRestartTrigger by remember { mutableIntStateOf(0) }
 
+    var aspectLocked by rememberSaveable(modelId) { mutableStateOf(false) }
+    var lockedAspect by rememberSaveable(modelId) { mutableDoubleStateOf(1.0) }
+    var inputPreview by remember { mutableStateOf<Bitmap?>(null) }
     var isPreviewMode by remember { mutableStateOf(false) }
     val preferences = remember {
         context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
@@ -652,14 +659,26 @@ fun ModelRunScreen(
     // whatever reads it back from history.
     val onDitWidthChange = remember {
         { value: Float ->
-            currentWidth = snapDitSize(value)
+            if (aspectLocked) {
+                val (width, height) = DitResolution.lockedSize(value, lockedAspect, true)
+                currentWidth = width
+                currentHeight = height
+            } else {
+                currentWidth = snapDitSize(value)
+            }
             aspectRatio = inferAspectRatioString(currentWidth, currentHeight)
             saveAllFields()
         }
     }
     val onDitHeightChange = remember {
         { value: Float ->
-            currentHeight = snapDitSize(value)
+            if (aspectLocked) {
+                val (width, height) = DitResolution.lockedSize(value, lockedAspect, false)
+                currentWidth = width
+                currentHeight = height
+            } else {
+                currentHeight = snapDitSize(value)
+            }
             aspectRatio = inferAspectRatioString(currentWidth, currentHeight)
             saveAllFields()
         }
@@ -2139,10 +2158,11 @@ fun ModelRunScreen(
                         horizontalArrangement = Arrangement.Start,
                     ) {
                         if (selectedImageUri != null) {
-                            Card(
-                                modifier = Modifier
-                                    .size(64.dp),
-                                shape = MaterialTheme.shapes.small,
+                            PreviewableInputCard(
+                                bitmap = croppedBitmap,
+                                label = stringResource(R.string.ui_view_base),
+                                onPreview = { inputPreview = it },
+                                modifier = Modifier.size(64.dp).testTag("base-image-thumbnail"),
                             ) {
                                 Box {
                                     croppedBitmap?.let { bitmap ->
@@ -2274,9 +2294,11 @@ fun ModelRunScreen(
                                 if (index > 0 || selectedImageUri != null) {
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Card(
-                                    modifier = Modifier.size(64.dp),
-                                    shape = MaterialTheme.shapes.small,
+                                PreviewableInputCard(
+                                    bitmap = reference.bitmap,
+                                    label = stringResource(R.string.ui_view_reference),
+                                    onPreview = { inputPreview = it },
+                                    modifier = Modifier.size(64.dp).testTag("reference-image-thumbnail-$index"),
                                 ) {
                                     Box {
                                         AsyncImage(
@@ -2335,6 +2357,11 @@ fun ModelRunScreen(
             isDit = model?.isDit == true,
             onDitWidthChange = onDitWidthChange,
             onDitHeightChange = onDitHeightChange,
+            aspectLocked = aspectLocked,
+            onAspectLockChange = { locked ->
+                lockedAspect = currentWidth.toDouble() / currentHeight
+                aspectLocked = locked
+            },
             runOnCpu = model?.runOnCpu ?: false,
             useImg2img = useImg2img,
             isRunning = isRunning,
@@ -2437,28 +2464,21 @@ fun ModelRunScreen(
                 })
             },
             bottomBar = {
-                Column {
-                    if (pagerState.currentPage == 0) {
-                        io.github.xororz.localdream.ui.design.ActionDock(navigationInsets = false) {
-                            if (isRunning) {
-                                androidx.compose.material3.LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                                OutlinedButton(onClick = { showInterruptDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("${stringResource(R.string.interrupt_generation)} · ${(progress * 100).toInt()}%") }
-                            } else {
-                                Button(
-                                    onClick = ::startGeneration,
-                                    enabled = model != null && serviceState !is GenerationState.Progress && !isUpscaling && !isUltrafixPreparing && (selectedImageUri == null || base64EncodeDone),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text(stringResource(R.string.generate_image)) }
-                            }
-                        }
+                io.github.xororz.localdream.ui.design.WorkspaceBottomBar(pagerState.currentPage, { index ->
+                    coroutineScope.launch {
+                        focusManager.clearFocus()
+                        pagerState.animateScrollToPage(index)
                     }
-                    if (!io.github.xororz.localdream.ui.design.keyboardIsVisible()) {
-                        io.github.xororz.localdream.ui.design.WorkspaceNavigation(pagerState.currentPage) { index ->
-                            coroutineScope.launch {
-                                focusManager.clearFocus()
-                                pagerState.animateScrollToPage(index)
-                            }
-                        }
+                }) {
+                    if (isRunning) {
+                        androidx.compose.material3.LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        OutlinedButton(onClick = { showInterruptDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("${stringResource(R.string.interrupt_generation)} · ${(progress * 100).toInt()}%") }
+                    } else {
+                        Button(
+                            onClick = ::startGeneration,
+                            enabled = model != null && serviceState !is GenerationState.Progress && !isUpscaling && !isUltrafixPreparing && (selectedImageUri == null || base64EncodeDone),
+                            modifier = Modifier.fillMaxWidth().testTag("generate-action"),
+                        ) { Text(stringResource(R.string.generate_image)) }
                     }
                 }
             },
@@ -2784,6 +2804,8 @@ fun ModelRunScreen(
             onDismiss = { showParametersDialog = false },
         )
     }
+
+    inputPreview?.let { bitmap -> InputImagePreview(bitmap) { inputPreview = null } }
 
     if (isPreviewMode && currentBitmap != null) {
         ZoomableImageOverlay(

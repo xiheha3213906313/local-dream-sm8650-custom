@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -53,6 +55,8 @@ internal fun GenerationWorkspace(
     denoiseStrength: Float,
     seed: String,
     returnedSeed: Long?,
+    aspectLocked: Boolean = false,
+    onAspectLockChange: (Boolean) -> Unit = {},
     onAspectRatioSelected: (String) -> Unit,
     onCustomAspectRatioClick: () -> Unit,
     onResolutionSelected: (Resolution) -> Unit,
@@ -78,6 +82,7 @@ internal fun GenerationWorkspace(
 ) {
     var active by remember { mutableStateOf<String?>(null) }
     var editorOpen by remember { mutableStateOf(false) }
+    var dragPreview by remember { mutableStateOf<String?>(null) }
     var dragging by remember { mutableStateOf<String?>(null) }
     val anchors = remember { mutableStateMapOf<String, Rect>() }
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -186,20 +191,35 @@ internal fun GenerationWorkspace(
                 }
                 if (showParameters) {
                     fields.chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { field ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (row.first().id == "width" && isDit) 4.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            row.forEachIndexed { index, field ->
                                 ParameterCell(
                                     field,
                                     Modifier.weight(1f).onGloballyPositioned { coordinates ->
                                         val top = coordinates.positionInWindow() - origin
                                         anchors[field.id] = Rect(top, androidx.compose.ui.geometry.Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
-                                    }.graphicsLayer { alpha = if (active == field.id || dragging == field.id) 0f else 1f },
+                                    }.graphicsLayer { alpha = if (active == field.id || dragPreview == field.id) 0f else 1f },
                                     onAdjust = { ticks -> adjust(field.id, ticks) },
-                                    onDragging = { dragging = if (it) field.id else null },
+                                    onDragging = {
+                                        dragging = if (it) field.id else null
+                                        if (it) dragPreview = field.id
+                                    },
                                 ) {
                                     focus.clearFocus()
                                     active = field.id
                                     editorOpen = true
+                                }
+                                if (row.first().id == "width" && index == 0 && isDit) {
+                                    CompositionLocalProvider(androidx.compose.material3.LocalMinimumInteractiveComponentSize provides 0.dp) {
+                                        androidx.compose.material3.IconToggleButton(
+                                            checked = aspectLocked,
+                                            onCheckedChange = onAspectLockChange,
+                                            enabled = !isRunning,
+                                            modifier = Modifier.size(36.dp).testTag("aspect-ratio-lock"),
+                                        ) {
+                                            Icon(if (aspectLocked) Icons.Default.Lock else Icons.Default.LockOpen, stringResource(if (aspectLocked) R.string.ui_unlock_aspect else R.string.ui_lock_aspect), Modifier.size(20.dp))
+                                        }
+                                    }
                                 }
                             }
                             if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -286,9 +306,9 @@ internal fun GenerationWorkspace(
                 }
             }
         }
-        val lifted = fields.firstOrNull { it.id == dragging }
-        val liftSource = anchors[dragging]
-        if (lifted != null && liftSource != null) LiftedParameter(lifted.label, lifted.value, liftSource)
+        val lifted = fields.firstOrNull { it.id == dragPreview }
+        val liftSource = anchors[dragPreview]
+        if (lifted != null && liftSource != null) LiftedParameter(lifted.label, lifted.value, liftSource, dragging == dragPreview) { dragPreview = null }
     }
 }
 
@@ -338,6 +358,7 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
                             val ticks = (distance / tickPixels).toInt()
                             if (ticks != previousTicks) {
                                 adjustFromStart(ticks)
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 previousTicks = ticks
                             }
                             change.consume()

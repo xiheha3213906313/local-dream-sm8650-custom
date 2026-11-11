@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Report
@@ -86,6 +85,7 @@ import io.github.xororz.localdream.data.HistoryFilter
 import io.github.xororz.localdream.data.HistoryItem
 import io.github.xororz.localdream.ui.design.Button
 import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.ChoiceControl
 import io.github.xororz.localdream.ui.design.ElevatedCard
 import io.github.xororz.localdream.ui.design.IconButton
 import io.github.xororz.localdream.ui.design.OutlinedButton
@@ -197,13 +197,10 @@ internal fun ModelRunResultPage(
                             currentBitmap?.let { bitmap ->
                                 Button(onClick = { onSaveClick(bitmap) }) { Text(stringResource(R.string.save)) }
                                 if (isFavorite != null) {
-                                    OutlinedButton(onClick = onFavoriteClick) {
-                                        Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.ui_favorite))
-                                    }
+                                    ChoiceControl(stringResource(R.string.ui_favorite), onFavoriteClick, Modifier.testTag("result-favorite"), checked = isFavorite, height = 52.dp)
                                 }
-                                if (showUpscaleButton) OutlinedButton(onClick = onUpscaleClick, enabled = upscaleEnabled) { Text(stringResource(R.string.ui_upscale_short)) }
-                                if (showUltrafixButton) OutlinedButton(onClick = onUltrafixClick, enabled = ultrafixEnabled) { Text("UltraFix") }
-                                if (showUpscaleButton || showUltrafixButton) OutlinedButton(onClick = if (showUltrafixButton) onUltrafixLongClick else onUpscaleLongClick) { Text(stringResource(R.string.ui_import_image)) }
+                                if (showUpscaleButton) ChoiceControl(stringResource(R.string.ui_upscale_short), onUpscaleClick, enabled = upscaleEnabled, height = 52.dp, onLongClick = onUpscaleLongClick)
+                                if (showUltrafixButton) ChoiceControl("UltraFix", onUltrafixClick, enabled = ultrafixEnabled, height = 52.dp, onLongClick = onUltrafixLongClick)
                                 if (showReportButton) OutlinedButton(onClick = onReportClick) { Icon(Icons.Default.Report, stringResource(R.string.ui_report)) }
                             }
                         }

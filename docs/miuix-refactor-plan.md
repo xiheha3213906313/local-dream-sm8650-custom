@@ -35,3 +35,14 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Cap the positive prompt region so the independent negative prompt immediately follows its actual border.
 - [x] 106 regression checks passed in GitHub Actions, including four font scales and runtime drag reversal; final local build, original certificate, APK CRC/alignment and staged native libraries verified.
 - [x] Source `8bb493e` pushed and release `sm8650-miuix-v0.13` published. Upload run `42998479533` succeeded; only release and asset metadata checked afterward, no published-file downloads.
+
+## v0.14 feedback
+
+- [x] Restore CPU / NPU / DiT labels; start the list below the import row so pulling down reveals it.
+- [x] Stretch the held parameter upward from the original bottom edge, animate both directions and add adjustment haptics.
+- [x] Add a real DiT aspect-ratio lock with paired range constraints and supported size alignment.
+- [x] Speed up parameter-card expansion and remove background dimming.
+- [x] Keep history selections permanently rounded, standardize filter-bar dimensions, and outline all filter options.
+- [x] Remove the result import action, label favorites, and preview imported base/reference thumbnails.
+- [x] Use one IME/navigation clearance so the generation action stops at its resting position during keyboard dismissal.
+- [ ] Complete native UI regression and visual review, signed build and release without downloading published APKs.
