@@ -14,7 +14,8 @@ _Also supports CPU/GPU inference_
 v0.11 rebuilds the model library, fixed generation workspace and import pages with
 [Miuix](https://github.com/compose-miuix-ui/miuix). Compact, single-line actions respect
 large system fonts; filenames and expandable guidance live outside controls.
-See [screenshots, behavior and validation](docs/sm8650-v0.11.md).
+See [v0.12 interaction and scrolling fixes](docs/sm8650-v0.12.md), including compact negative prompts, hold-and-drag parameters and anchored menus.
+The [v0.11 redesign notes](docs/sm8650-v0.11.md) describe the initial migration.
 
 ## Snapdragon 8 Gen 3 support
 

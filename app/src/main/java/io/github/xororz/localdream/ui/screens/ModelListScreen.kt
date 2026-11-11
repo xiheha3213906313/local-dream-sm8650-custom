@@ -55,9 +55,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -281,8 +281,6 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
     var renameTarget by remember { mutableStateOf<Model?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
-    val scrollBehavior =
-        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     var showSettingsDialog by remember { mutableStateOf(settingsPage) }
     var showFileManagerDialog by remember { mutableStateOf(false) }
@@ -718,78 +716,81 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                             // A single overflow menu keeps the collapsed large top
                             // bar's title from being squeezed by multiple action
                             // icons competing for width.
-                            var menuExpanded by remember { mutableStateOf(false) }
-                            IconButton(onClick = { menuExpanded = true }) {
-                                Icon(
-                                    Icons.Default.MoreVert,
-                                    contentDescription = stringResource(R.string.more_options),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = menuExpanded,
-                                onDismissRequest = { menuExpanded = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.help)) },
-                                    leadingIcon = {
-                                        Icon(Icons.AutoMirrored.Filled.Help, contentDescription = null)
-                                    },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showHelpDialog = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.history_tab)) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.History, contentDescription = null)
-                                    },
-                                    onClick = {
-                                        menuExpanded = false
-                                        navController.navigate(Screen.History.route)
-                                    },
-                                )
-                                // In connected-device mode the standalone upscale
-                                // page runs on the host's NPU, so it is offered
-                                // when the host has an upscaler installed; locally
-                                // it needs this device's Qualcomm NPU.
-                                val showUpscaleEntry = if (remoteActive) {
-                                    remoteRepository.upscalerPaths.isNotEmpty()
-                                } else {
-                                    Model.isQualcommDevice()
+                            Box {
+                                var menuExpanded by remember { mutableStateOf(false) }
+                                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.testTag("model-library-menu-button")) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = stringResource(R.string.more_options),
+                                    )
                                 }
-                                if (showUpscaleEntry) {
+                                DropdownMenu(
+                                    expanded = menuExpanded,
+                                    onDismissRequest = { menuExpanded = false },
+                                    modifier = Modifier.testTag("model-library-menu-popup"),
+                                ) {
                                     DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.image_upscale)) },
+                                        text = { Text(stringResource(R.string.help)) },
                                         leadingIcon = {
-                                            Icon(Icons.Default.AutoFixHigh, contentDescription = null)
+                                            Icon(Icons.AutoMirrored.Filled.Help, contentDescription = null)
                                         },
                                         onClick = {
                                             menuExpanded = false
-                                            navController.navigate(Screen.Upscale.route)
+                                            showHelpDialog = true
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.history_tab)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.History, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            menuExpanded = false
+                                            navController.navigate(Screen.History.route)
+                                        },
+                                    )
+                                    // In connected-device mode the standalone upscale
+                                    // page runs on the host's NPU, so it is offered
+                                    // when the host has an upscaler installed; locally
+                                    // it needs this device's Qualcomm NPU.
+                                    val showUpscaleEntry = if (remoteActive) {
+                                        remoteRepository.upscalerPaths.isNotEmpty()
+                                    } else {
+                                        Model.isQualcommDevice()
+                                    }
+                                    if (showUpscaleEntry) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.image_upscale)) },
+                                            leadingIcon = {
+                                                Icon(Icons.Default.AutoFixHigh, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                menuExpanded = false
+                                                navController.navigate(Screen.Upscale.route)
+                                            },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.remote_link)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Devices, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            menuExpanded = false
+                                            navController.navigate(Screen.RemoteLink.route)
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.settings)) },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Settings, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            menuExpanded = false
+                                            navController.navigate(Screen.Settings.route)
                                         },
                                     )
                                 }
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.remote_link)) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Devices, contentDescription = null)
-                                    },
-                                    onClick = {
-                                        menuExpanded = false
-                                        navController.navigate(Screen.RemoteLink.route)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.settings)) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Settings, contentDescription = null)
-                                    },
-                                    onClick = {
-                                        menuExpanded = false
-                                        navController.navigate(Screen.Settings.route)
-                                    },
-                                )
                             }
                         }
                     },
@@ -800,8 +801,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
             Column(
                 modifier = modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                    .padding(paddingValues),
             ) {
                 if (remoteActive) {
                     RemoteModeBanner(
@@ -813,17 +813,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
-                androidx.compose.foundation.layout.FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    listOf("MNN", "QNN", "DiT").forEachIndexed { index, label ->
-                        io.github.xororz.localdream.ui.design.OutlinedButton(onClick = { scope.launch { pagerState.animateScrollToPage(index) } }) {
-                            Text(if (pagerState.currentPage == index) "✓ $label" else label)
-                        }
-                    }
-                }
+                ModelFormatTabs(pagerState.currentPage) { index -> scope.launch { pagerState.animateScrollToPage(index) } }
 
                 HorizontalPager(
                     state = pagerState,
@@ -836,8 +826,8 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                     }
 
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                        modifier = Modifier.fillMaxSize().testTag("model-library-list"),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         if (page == 0 && !remoteActive) {
@@ -976,18 +966,6 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                         }
                     }
                 }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    TabPageIndicator(
-                        pageCount = pagerState.pageCount,
-                        currentPage = pagerState.currentPage,
-                    )
-                }
             }
         }
     }
@@ -1021,7 +999,6 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
         }
     }
     if (drawerOffset.value < 1f) {
-        val settingsScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1029,7 +1006,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                 .background(MaterialTheme.colorScheme.surface),
         ) {
             Scaffold(
-                modifier = Modifier.nestedScroll(settingsScrollBehavior.nestedScrollConnection),
+                modifier = Modifier,
                 topBar = {
                     io.github.xororz.localdream.ui.design.DreamToolbar(
                         title = stringResource(R.string.settings),

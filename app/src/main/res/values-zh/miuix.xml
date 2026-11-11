@@ -57,12 +57,13 @@
     <string name="ui_denoise_short">降噪</string>
     <string name="ui_runtime_short">设备</string>
     <string name="ui_aspect_short">比例</string>
-    <string name="ui_positive_short">正向</string>
-    <string name="ui_negative_short">负向</string>
+    <string name="ui_positive_short">正向提示词</string>
+    <string name="ui_negative_short">负面提示词</string>
     <string name="ui_images_short">图片</string>
     <string name="ui_preview_short">预览</string>
     <string name="ui_base_short">底图</string>
     <string name="ui_reference_short">参考</string>
     <string name="ui_parameters_short">参数</string>
     <string name="ui_back_to_prompts">返回提示词</string>
+    <string name="ui_drag_to_adjust">长按左右滑动</string>
 </resources>

@@ -16,3 +16,12 @@ User clarification: large-font support must keep action controls compact. Button
 Final steering: generation parameters must remain on one non-scrolling page. Miuix theme is retained, with custom compact control dimensions instead of strict component defaults.
 
 Final input layout: positive and negative prompts are both visible; the lower parameter grid can collapse without scrolling the page or losing prompt text.
+
+## v0.12 feedback
+
+- [x] Auto-collapse parameters during input; a compact independent negative prompt below the positive prompt and above parameters.
+- [x] Toolbar overflow, anchored library menu and evenly sized model tabs.
+- [x] Image actions above the positive prompt; tap opens a parameter card, hold + drag adjusts values.
+- [x] Remove stale collapsing app-bar scroll connections; test real list/result dragging and full result text.
+- [x] Final feedback: icon-only image actions, independent negative prompt below positive input, no divider; 82 tests passed; final divider removal passed 8 focused layout/input checks.
+- [ ] Build, verify signing locally, push and publish; do not download assets after publishing.

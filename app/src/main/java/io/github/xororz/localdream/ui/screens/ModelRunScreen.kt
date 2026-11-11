@@ -75,8 +75,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -93,7 +91,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -240,8 +237,6 @@ fun ModelRunScreen(
         }
     }
     val historyManager = remember { HistoryManager(context) }
-    val scrollBehavior =
-        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val focusManager = LocalFocusManager.current
     val interactionSource = remember { MutableInteractionSource() }
 
@@ -2066,17 +2061,72 @@ fun ModelRunScreen(
         }
     }
 
+    fun importWorkspaceParameters() {
+        val clipboard =
+            context.getSystemService(
+                Context.CLIPBOARD_SERVICE,
+            ) as? ClipboardManager
+        val raw = clipboard?.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)
+            ?.coerceToText(context)
+            ?.toString()
+        val imported = ParamShare.tryDecode(raw)
+        if (imported != null) {
+            pendingImport = imported
+            clipboardImportChecked = true
+        } else {
+            Toast.makeText(
+                context,
+                msgImportNoParams,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+    fun shareWorkspaceParameters() {
+        val currentMode = when {
+            supportsReferenceEditing && (selectedImageUri != null || editReferenceImages.isNotEmpty()) ->
+                GenerationMode.EDIT
+
+            isInpaintMode -> GenerationMode.INPAINT
+
+            selectedImageUri != null -> GenerationMode.IMG2IMG
+
+            else -> GenerationMode.TXT2IMG
+        }
+        shareSourceParams = GenerationParameters(
+            steps = steps.toInt(),
+            cfg = cfg,
+            seed = seed.toLongOrNull(),
+            prompt = promptField.text,
+            negativePrompt = negativePromptField.text,
+            generationTime = null,
+            width = currentWidth,
+            height = currentHeight,
+            runOnCpu = model?.runOnCpu ?: false,
+            denoiseStrength = denoiseStrength,
+            useOpenCL = useOpenCL,
+            scheduler = scheduler,
+            mode = currentMode,
+        )
+        shareSourceModelId = modelId
+    }
+
     // === Fixed workspace presentation ===
     @Composable
-    fun ImageInputs() {
+    fun ImageInputs(compact: Boolean) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onSelectImageClick() }, enabled = !isRunning, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.ui_base_short)) }
-                if (supportsReferenceEditing) OutlinedButton(onClick = { onAddEditReferencesClick() }, enabled = !isRunning && !editReferencesLoading, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.ui_reference_short)) }
-            }
+            ImageInputActions(
+                onBase = { onSelectImageClick() },
+                onReference = if (supportsReferenceEditing) ({ onAddEditReferencesClick() }) else null,
+                baseEnabled = !isRunning,
+                referenceEnabled = !isRunning && !editReferencesLoading,
+            )
             AnimatedVisibility(
-                visible = (selectedImageUri != null && base64EncodeDone) ||
-                    editReferenceImages.isNotEmpty() || editReferencesLoading,
+                visible = !compact && !io.github.xororz.localdream.ui.design.keyboardIsVisible() && (
+                    (selectedImageUri != null && base64EncodeDone) ||
+                        editReferenceImages.isNotEmpty() || editReferencesLoading
+                    ),
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut(),
             ) {
@@ -2419,59 +2469,7 @@ fun ModelRunScreen(
                 seed = returnedSeed.toString()
                 saveAllFields()
             },
-            onImportFromClipboard = {
-                val clipboard =
-                    context.getSystemService(
-                        Context.CLIPBOARD_SERVICE,
-                    ) as? ClipboardManager
-                val raw = clipboard?.primaryClip
-                    ?.takeIf { it.itemCount > 0 }
-                    ?.getItemAt(0)
-                    ?.coerceToText(context)
-                    ?.toString()
-                val imported = ParamShare.tryDecode(raw)
-                if (imported != null) {
-                    pendingImport = imported
-                    clipboardImportChecked = true
-                } else {
-                    Toast.makeText(
-                        context,
-                        msgImportNoParams,
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            },
-            onShare = {
-                val currentMode = when {
-                    supportsReferenceEditing && (selectedImageUri != null || editReferenceImages.isNotEmpty()) ->
-                        GenerationMode.EDIT
 
-                    isInpaintMode -> GenerationMode.INPAINT
-
-                    selectedImageUri != null -> GenerationMode.IMG2IMG
-
-                    else -> GenerationMode.TXT2IMG
-                }
-                shareSourceParams = GenerationParameters(
-                    steps = steps.toInt(),
-                    cfg = cfg,
-                    seed = seed.toLongOrNull(),
-                    prompt = promptField.text,
-                    negativePrompt = negativePromptField.text,
-                    generationTime = null,
-                    width = currentWidth,
-                    height = currentHeight,
-                    runOnCpu = model?.runOnCpu ?: false,
-                    denoiseStrength = denoiseStrength,
-                    useOpenCL = useOpenCL,
-                    scheduler = scheduler,
-                    mode = currentMode,
-                )
-                shareSourceModelId = modelId
-            },
-            onReset = { showResetConfirmDialog = true },
-
-            modelName = model?.name.orEmpty(), description = model?.description.orEmpty(),
             positive = {
                 ControlledPromptTagTextField(controller = promptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, label = {
                     if (promptField.text.isNotEmpty()) Text("${promptField.tokenCount}/${promptField.tokenMax}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
@@ -2482,9 +2480,9 @@ fun ModelRunScreen(
                     if (negativePromptField.text.isNotEmpty()) Text("${negativePromptField.tokenCount}/${negativePromptField.tokenMax}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 })
             },
-            inputs = if (useImg2img) ({ ImageInputs() }) else null,
-            preview = if (intermediateBitmap != null) ({ intermediateBitmap?.let { Image(bitmap = it.asImageBitmap(), contentDescription = "Generation Preview", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } }) else null,
+            inputs = if (useImg2img) ({ compact -> ImageInputs(compact) }) else null,
             status = errorMessage,
+            promptFocused = promptField.isFocused || negativePromptField.isFocused,
             positiveCount = if (promptField.text.isNotEmpty()) "${promptField.tokenCount}/${promptField.tokenMax}" else "",
             negativeCount = if (negativePromptField.text.isNotEmpty()) "${negativePromptField.tokenCount}/${negativePromptField.tokenMax}" else "",
         )
@@ -2501,13 +2499,19 @@ fun ModelRunScreen(
             },
     ) {
         Scaffold(
-            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                if (!io.github.xororz.localdream.ui.design.keyboardIsVisible()) {
-                    io.github.xororz.localdream.ui.design.DreamToolbar(model?.name ?: stringResource(R.string.ui_workspace_title), onBack = {
-                        if (isRunning) showInterruptDialog = true else handleExit()
-                    })
-                }
+                io.github.xororz.localdream.ui.design.DreamToolbar(model?.name ?: stringResource(R.string.ui_workspace_title), onBack = {
+                    if (isRunning) showInterruptDialog = true else handleExit()
+                }, actions = {
+                    GenerationToolbarMenu(
+                        modelName = model?.name.orEmpty(),
+                        description = model?.description.orEmpty(),
+                        onImport = ::importWorkspaceParameters,
+                        onShare = ::shareWorkspaceParameters,
+                        onReset = { showResetConfirmDialog = true },
+                        preview = if (intermediateBitmap != null) ({ intermediateBitmap?.let { Image(bitmap = it.asImageBitmap(), contentDescription = "Generation Preview", modifier = Modifier.fillMaxWidth().aspectRatio(1f), contentScale = ContentScale.Fit) } }) else null,
+                    )
+                })
             },
             bottomBar = {
                 Column {
