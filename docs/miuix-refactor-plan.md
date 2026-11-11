@@ -9,7 +9,7 @@ Goal: rebuild the presentation and navigation with Miuix 0.9.0 while keeping inf
 - [x] Model library and settings navigation, result/history actions and remaining screens use consistent Miuix controls and spacing.
 - [x] Verify small widths and 1.3/1.5/2.0 font scales, render screenshots and fix overflow rather than shrinking text.
 - [x] Build, tests, same-certificate signing, APK CRC/alignment and staged native library checks.
-- [ ] Push source and publish GitHub release: current CLI authentication returns 401 / invalid token; GitHub connection requested.
+- [x] Push source and publish GitHub release: source commit `f269b22`, release `sm8650-miuix-v0.11` in `xiheha3213906313/local-dream-sm8650-custom`. Published assets were checked through metadata only; no post-upload download.
 
 User clarification: large-font support must keep action controls compact. Button names stay on one line; long guidance expands separately. Never grow buttons by wrapping labels into multiple lines.
 
