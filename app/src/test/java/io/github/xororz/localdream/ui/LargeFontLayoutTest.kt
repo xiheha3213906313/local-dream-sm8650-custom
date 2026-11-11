@@ -165,8 +165,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         compose.onNodeWithTag("parameter-width").assertDoesNotExist()
         compose.onNodeWithTag("negative-prompt-toggle").performClick()
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(2)
-        val editors = compose.onAllNodes(hasSetTextAction())
-        editors.onLast().performClick().performTextInput("blur")
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("negative-prompt-editor"))).performClick().performTextInput("blur")
         val negativeHeight = compose.onNodeWithTag("negative-prompt-editor").fetchSemanticsNode().boundsInRoot.height
         assertEquals(with(compose.density) { 72.dp.toPx() }, negativeHeight, 1f)
         val negativeBounds = compose.onNodeWithTag("negative-prompt-editor").fetchSemanticsNode().boundsInRoot
@@ -176,7 +175,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         compose.onNodeWithTag("negative-prompt-toggle").performClick()
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(1)
         compose.onNodeWithTag("negative-prompt-toggle").performClick()
-        compose.onAllNodes(hasSetTextAction()).onLast().assertTextContains("blur", substring = true)
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("negative-prompt-editor"))).assertTextContains("blur", substring = true)
         compose.onNodeWithTag("parameter-panel-toggle").performClick()
         compose.onNodeWithTag("parameter-width").assertIsDisplayed()
         compose.onNodeWithTag("negative-prompt-editor").assertDoesNotExist()
@@ -677,13 +676,24 @@ class LargeFontLayoutTest(private val scale: Float) {
     @Test fun keyboardDismissClearsFocusInsideDialogFieldsToo() {
         var ime by androidx.compose.runtime.mutableStateOf(false)
         var value by androidx.compose.runtime.mutableStateOf("")
-        show(imeVisible = { ime }) {
-            androidx.compose.material3.AlertDialog(onDismissRequest = {}, confirmButton = {}, text = { OutlinedTextField(value, { value = it }) })
+        var opened by androidx.compose.runtime.mutableStateOf(true)
+        try {
+            show(imeVisible = { ime }) {
+                if (opened) {
+                    androidx.compose.ui.window.Dialog(onDismissRequest = { opened = false }) {
+                        Card(Modifier.fillMaxWidth()) {
+                            OutlinedTextField(value, { value = it }, singleLine = true)
+                        }
+                    }
+                }
+            }
+            compose.onNode(hasSetTextAction()).performClick().assertIsFocused()
+            compose.runOnIdle { ime = true }
+            compose.runOnIdle { ime = false }
+            compose.onNode(hasSetTextAction()).assertIsNotFocused()
+        } finally {
+            compose.runOnUiThread { opened = false }
         }
-        compose.onNode(hasSetTextAction()).performClick().assertIsFocused()
-        compose.runOnIdle { ime = true }
-        compose.runOnIdle { ime = false }
-        compose.onNode(hasSetTextAction()).assertIsNotFocused()
     }
 
     @Test fun referenceDraggingChangesStableItemOrderAndRetainsClickPreview() {
