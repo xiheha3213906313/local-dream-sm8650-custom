@@ -45,4 +45,5 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Keep history selections permanently rounded, standardize filter-bar dimensions, and outline all filter options.
 - [x] Remove the result import action, label favorites, and preview imported base/reference thumbnails.
 - [x] Use one IME/navigation clearance so the generation action stops at its resting position during keyboard dismissal.
-- [ ] Complete native UI regression and visual review, signed build and release without downloading published APKs.
+- [x] 145 checks passed in run `43009222340`, with actual long-list fixtures, four font scales, animation/background pixel checks and IME clearance frames; native screenshots reviewed. Original signing certificate and local APK integrity/alignment/native-library checks passed.
+- [ ] Publish v0.14 without downloading published APKs.
