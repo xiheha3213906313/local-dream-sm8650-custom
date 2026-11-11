@@ -24,4 +24,4 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Image actions above the positive prompt; tap opens a parameter card, hold + drag adjusts values.
 - [x] Remove stale collapsing app-bar scroll connections; test real list/result dragging and full result text.
 - [x] Final feedback: icon-only image actions, independent negative prompt below positive input, no divider; 82 tests passed; final divider removal passed 8 focused layout/input checks.
-- [ ] Build, verify signing locally, push and publish; do not download assets after publishing.
+- [x] Build and verify signing locally; source `2f50bd1` pushed and release `sm8650-miuix-v0.12` published. Only publication/asset metadata were checked afterward; no asset downloads.
