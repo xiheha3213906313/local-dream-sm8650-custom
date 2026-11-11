@@ -46,4 +46,4 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Remove the result import action, label favorites, and preview imported base/reference thumbnails.
 - [x] Use one IME/navigation clearance so the generation action stops at its resting position during keyboard dismissal.
 - [x] 145 checks passed in run `43009222340`, with actual long-list fixtures, four font scales, animation/background pixel checks and IME clearance frames; native screenshots reviewed. Original signing certificate and local APK integrity/alignment/native-library checks passed.
-- [ ] Publish v0.14 without downloading published APKs.
+- [x] Source `e1a027b` pushed and release `sm8650-miuix-v0.14` published. Upload run `43010484540` succeeded; only release/asset metadata checked afterward, no published APK downloads.
