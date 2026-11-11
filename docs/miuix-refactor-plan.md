@@ -38,7 +38,7 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 
 ## v0.14 feedback
 
-- [x] Restore CPU / NPU / DiT labels; start the list below the import row so pulling down reveals it.
+- [x] Restore CPU / NPU / DiT labels; omit the import row initially and reveal it after a downward pull without consuming list scroll distance.
 - [x] Stretch the held parameter upward from the original bottom edge, animate both directions and add adjustment haptics.
 - [x] Add a real DiT aspect-ratio lock with paired range constraints and supported size alignment.
 - [x] Speed up parameter-card expansion and remove background dimming.

@@ -49,14 +49,20 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.*
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -115,6 +121,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -826,18 +833,44 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                         else -> ditModels
                     }
 
-                    // Start with the import row just above the viewport. A normal downward
-                    // list drag reveals it; no parent consumes the list's scrolling gestures.
                     if (!remoteActive && !modelRepository.isLoaded) return@HorizontalPager
                     val hasImport = !remoteActive && (page != 2 || DitEngine.isSupportedDevice())
-                    val libraryState = rememberLazyListState(initialFirstVisibleItemIndex = if (hasImport && models.isNotEmpty()) 1 else 0)
+                    var importRevealed by rememberSaveable(page, remoteActive) { mutableStateOf(false) }
+                    val libraryState = rememberLazyListState()
+                    val revealDistance = with(LocalDensity.current) { 32.dp.toPx() }
+                    val revealImport = remember(libraryState, hasImport, revealDistance) {
+                        object : NestedScrollConnection {
+                            private var pulled = 0f
+                            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                                val atTop = libraryState.firstVisibleItemIndex == 0 && libraryState.firstVisibleItemScrollOffset == 0
+                                val pullingDown = source == NestedScrollSource.UserInput && available.y > 0f
+                                if (hasImport && !importRevealed && pullingDown && atTop) {
+                                    pulled += available.y
+                                    if (pulled >= revealDistance) importRevealed = true
+                                }
+                                // Observe only the distance left over by the list. Never consume it.
+                                return Offset.Zero
+                            }
+                            override suspend fun onPostFling(consumed: androidx.compose.ui.unit.Velocity, available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                                pulled = 0f
+                                return androidx.compose.ui.unit.Velocity.Zero
+                            }
+                        }
+                    }
+                    LaunchedEffect(importRevealed) {
+                        if (importRevealed) {
+                            snapshotFlow { libraryState.isScrollInProgress }.first { !it }
+                            libraryState.animateScrollToItem(0)
+                        }
+                    }
+                    val showImport = models.isEmpty() || importRevealed
                     LazyColumn(
                         state = libraryState,
-                        modifier = Modifier.fillMaxSize().testTag("model-library-list"),
+                        modifier = Modifier.fillMaxSize().nestedScroll(revealImport).testTag("model-library-list"),
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        if (page == 0 && !remoteActive) {
+                        if (page == 0 && !remoteActive && showImport) {
                             item {
                                 AddCustomModelButton(
                                     onClick = { navController.navigate(Screen.ImportCheckpoint.route) },
@@ -846,7 +879,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                             }
                         }
 
-                        if (page == 1 && !remoteActive) {
+                        if (page == 1 && !remoteActive && showImport) {
                             item {
                                 AddModelOutlinedCard(
                                     label = stringResource(R.string.ui_import_title),
@@ -857,7 +890,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                             }
                         }
 
-                        if (page == 2 && !remoteActive && DitEngine.isSupportedDevice()) {
+                        if (page == 2 && !remoteActive && DitEngine.isSupportedDevice() && showImport) {
                             item {
                                 AddModelOutlinedCard(
                                     label = stringResource(R.string.ui_import_title),

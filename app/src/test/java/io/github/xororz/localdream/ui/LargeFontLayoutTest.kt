@@ -497,7 +497,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         try {
             compose.onNodeWithText("CPU").assertIsDisplayed()
             compose.onNodeWithText("NPU").assertIsDisplayed()
-            compose.onNodeWithTag("model-import-entry").assertIsNotDisplayed()
+            compose.onNodeWithTag("model-import-entry").assertDoesNotExist()
             compose.onNodeWithTag("model-library-list").performTouchInput { swipeDown(startY = height * .25f, endY = height * .8f, durationMillis = 500) }
             compose.onNodeWithTag("model-import-entry").assertIsDisplayed().assertHasClickAction()
             capture("v014-library-pull-import")
@@ -659,6 +659,7 @@ class LargeFontLayoutTest(private val scale: Float) {
         kotlinx.coroutines.runBlocking { ModelRepository.getInstance(context).refreshAllModels() }
         show { ModelListScreen(androidx.navigation.compose.rememberNavController()) }
         compose.onNodeWithTag("model-library-list").assertIsDisplayed()
+        capture("v014-library-initial")
         return dirs
     }
 
@@ -670,7 +671,7 @@ class LargeFontLayoutTest(private val scale: Float) {
             val before = compose.onNodeWithTag("model-library-list").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
             repeat(10) { compose.onNodeWithTag("model-library-list").performTouchInput { swipeUp() } }
             val after = compose.onNodeWithTag("model-library-list").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
-            assertTrue("Finger swipes did not advance the list", after > before)
+            assertTrue("Finger swipes did not advance the list: before=$before after=$after", after > before)
             capture("model-library-scrolled")
             compose.onNodeWithText(last).assertIsDisplayed()
         } finally {
