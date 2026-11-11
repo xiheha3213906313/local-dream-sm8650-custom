@@ -33,6 +33,7 @@ this phone. v75 still uses bounded FP8-to-FP16 HMX compatibility and segmented
 memory management, with DSP VAE by default and an optional CPU fallback.
 See [v0.10 device/model changes and validation limits](docs/sm8650-v0.10.md).
 
+See [v0.16 Qwen Image 2.1 segmented loading fix](docs/sm8650-v0.16.md) for the 2 GiB budget failure reported on Xiaomi 14.
 See [build instructions and phone test procedure](docs/sm8650-fp8.md).
 The [v0.6 VAE isolation and trace notes](docs/sm8650-v0.6.md) describe the earlier CPU VAE isolation stage and numerical tracing.
 

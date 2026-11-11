@@ -178,7 +178,7 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
   sd_params.disable_prefetch = sm8650_compat;
   if (sm8650_compat) {
     // Hexagon reports no live VRAM capacity. Without an explicit model budget,
-    // the planner builds one segment and maps almost 4 GiB of Klein weights.
+    // the planner would otherwise retain the entire model's weights together.
     // This limit includes managed weights and graph buffers; the batch VMEM
     // limit is separate. Leave headroom for FastRPC and Android allocations.
     sd_params.max_vram = "HTP0=2.0";
@@ -332,7 +332,7 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
   sd_image_t *images = nullptr;
   int image_count = 0;
   sd::experimental_trace::reset();
-  sd::experimental_trace::emit("stage=generation_begin build=v0.10 seed=%lld cfg=%g width=%d height=%d vae=%s vae_direct=%d tiling=%d", (long long)params->seed, params->cfg_scale, params->width, params->height,ctx->sm8650_cpu_vae?"CPU":"HTP0",int(!ctx->sm8650_cpu_vae),int(gen.vae_tiling_params.enabled));
+  sd::experimental_trace::emit("stage=generation_begin build=v0.16 seed=%lld cfg=%g width=%d height=%d vae=%s vae_direct=%d tiling=%d", (long long)params->seed, params->cfg_scale, params->width, params->height,ctx->sm8650_cpu_vae?"CPU":"HTP0",int(!ctx->sm8650_cpu_vae),int(gen.vae_tiling_params.enabled));
   diagnostic_stage("text_encoding_and_lazy_loading");
   bool ok = false;
   try {

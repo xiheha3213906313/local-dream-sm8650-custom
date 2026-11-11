@@ -1,0 +1,28 @@
+diff --git a/src/model/diffusion/qwen_image_2_1.hpp b/src/model/diffusion/qwen_image_2_1.hpp
+index c331ac1..5cab302 100644
+--- a/src/model/diffusion/qwen_image_2_1.hpp
++++ b/src/model/diffusion/qwen_image_2_1.hpp
+@@ -1,6 +1,7 @@
+ #ifndef __SD_MODEL_DIFFUSION_QWEN_IMAGE_2_1_H__
+ #define __SD_MODEL_DIFFUSION_QWEN_IMAGE_2_1_H__
+ 
++#include "core/ggml_graph_cut.h"
+ #include "model/diffusion/qwen_image.hpp"
+ 
+ namespace Qwen {
+@@ -367,9 +368,15 @@ namespace Qwen {
+                 }
+                 joint = joint == nullptr ? h : ggml_concat(ctx->ggml_ctx, joint, h, 1);
+             }
++            // Keep the shared conditioning alive across cuts without retaining its
++            // projection weights. Chunked modulation views use the cached base.
++            sd::ggml_graph_cut::mark_graph_cut(time, "qwen21.prelude", "time");
++            sd::ggml_graph_cut::mark_graph_cut(modulation, "qwen21.prelude", "modulation");
++            sd::ggml_graph_cut::mark_graph_cut(joint, "qwen21.prelude", "joint");
+             for (int i = 0; i < config.num_layers; ++i) {
+                 auto block = std::dynamic_pointer_cast<QwenImage21TransformerBlock>(blocks["transformer_blocks." + std::to_string(i)]);
+                 joint      = block->forward(ctx, joint, mod, pe, token_indices, zero_shift, layout, masks);
++                sd::ggml_graph_cut::mark_graph_cut(joint, "qwen21.blocks." + std::to_string(i), "joint");
+             }
+             joint      = ggml_ext_slice(ctx->ggml_ctx, joint, 1, layout.prefix_length, joint->ne[1]);
+             auto scale = std::dynamic_pointer_cast<Linear>(blocks["norm_out.linear"])->forward(ctx, ggml_ext_chunk(ctx->ggml_ctx, time, 2, 1)[0]);

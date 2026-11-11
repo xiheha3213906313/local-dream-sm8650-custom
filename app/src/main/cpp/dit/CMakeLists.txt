@@ -34,6 +34,7 @@ function(apply_local_patch patch_file work_dir)
     endif()
 endfunction()
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/stable-diffusion.cpp.patch" "${SDCPP_DIR}")
+apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/qwen21-segmentation.patch" "${SDCPP_DIR}")
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/ggml.patch" "${SDCPP_DIR}/ggml")
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/ggml-v75-fp8.patch" "${SDCPP_DIR}/ggml")
 
