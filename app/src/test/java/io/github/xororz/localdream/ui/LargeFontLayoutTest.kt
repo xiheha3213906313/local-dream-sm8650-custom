@@ -673,27 +673,34 @@ class LargeFontLayoutTest(private val scale: Float) {
         compose.mainClock.autoAdvance = true
     }
 
-    @Test fun keyboardDismissClearsFocusInsideDialogFieldsToo() {
+    @Test fun keyboardDismissUsesEachInputsLocalFocusOwner() {
         var ime by androidx.compose.runtime.mutableStateOf(false)
         var value by androidx.compose.runtime.mutableStateOf("")
-        var opened by androidx.compose.runtime.mutableStateOf(true)
-        try {
-            show(imeVisible = { ime }) {
-                if (opened) {
-                    androidx.compose.ui.window.Dialog(onDismissRequest = { opened = false }) {
-                        Card(Modifier.fillMaxWidth()) {
-                            OutlinedTextField(value, { value = it }, singleLine = true)
-                        }
+        var localClears = 0
+        show(imeVisible = { ime }) {
+            val owner = androidx.compose.ui.platform.LocalFocusManager.current
+            // A dialog has a different focus owner from the Activity. Verify that input
+            // helpers resolve that local owner, rather than relying on the theme root.
+            val windowOwner = androidx.compose.runtime.remember(owner) {
+                object : androidx.compose.ui.focus.FocusManager {
+                    override fun clearFocus(force: Boolean) {
+                        localClears++
+                        owner.clearFocus(force)
                     }
+                    override fun moveFocus(focusDirection: androidx.compose.ui.focus.FocusDirection) = owner.moveFocus(focusDirection)
                 }
             }
-            compose.onNode(hasSetTextAction()).performClick().assertIsFocused()
-            compose.runOnIdle { ime = true }
-            compose.runOnIdle { ime = false }
-            compose.onNode(hasSetTextAction()).assertIsNotFocused()
-        } finally {
-            compose.runOnUiThread { opened = false }
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalFocusManager provides windowOwner) {
+                DreamPage("输入") { padding ->
+                    PageColumn(padding) { OutlinedTextField(value, { value = it }, singleLine = true) }
+                }
+            }
         }
+        compose.onNode(hasSetTextAction()).performClick().assertIsFocused()
+        compose.runOnIdle { ime = true }
+        compose.runOnIdle { ime = false }
+        compose.onNode(hasSetTextAction()).assertIsNotFocused()
+        compose.runOnIdle { assertTrue("The input did not clear its own window's focus", localClears > 0) }
     }
 
     @Test fun referenceDraggingChangesStableItemOrderAndRetainsClickPreview() {
