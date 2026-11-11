@@ -59,4 +59,4 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Equal compact result actions, theme-coloured CPU import and category scroll/import reset.
 - [x] Remove automatically prepended choice checkmarks while preserving selection semantics.
 - [x] Code checks, 193 checks and original-certificate build completed before the owner stopped extra verification.
-- [ ] Publish v0.15 directly; future releases use code checks and build only, with no tests, screenshot review or extra artifact validation.
+- [x] Published `sm8650-miuix-v0.15` from source `acdca1f`; upload run `43055840828` succeeded. Per the owner’s instruction, no further tests, screenshot review, artifact checks or downloads were performed. Future releases use code checks and build only.
