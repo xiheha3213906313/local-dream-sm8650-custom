@@ -58,4 +58,5 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Reorder reference objects with preview-preserving long-drag gestures and edge scrolling.
 - [x] Equal compact result actions, theme-coloured CPU import and category scroll/import reset.
 - [x] Remove automatically prepended choice checkmarks while preserving selection semantics.
-- [ ] Complete native regression, screenshot review, original-certificate build and publication without downloading published APKs.
+- [x] Code checks, 193 checks and original-certificate build completed before the owner stopped extra verification.
+- [ ] Publish v0.15 directly; future releases use code checks and build only, with no tests, screenshot review or extra artifact validation.
