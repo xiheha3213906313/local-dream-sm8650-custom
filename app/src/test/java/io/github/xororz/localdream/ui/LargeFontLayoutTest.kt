@@ -719,6 +719,7 @@ class LargeFontLayoutTest(private val scale: Float) {
             advanceEventTime(700)
             moveBy(Offset(80f, 0f), delayMillis = 100)
         }
+        capture("v015-reference-first-move")
         compose.runOnIdle { assertEquals(listOf("B", "A", "C", "D"), values.toList()) }
         compose.onNodeWithTag("reference-image-strip").performTouchInput { moveBy(Offset(72f, 0f), delayMillis = 100) }
         compose.runOnIdle { assertEquals(listOf("B", "C", "A", "D"), values.toList()) }

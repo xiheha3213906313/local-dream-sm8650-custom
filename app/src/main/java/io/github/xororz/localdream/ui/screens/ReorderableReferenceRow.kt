@@ -1,8 +1,10 @@
 package io.github.xororz.localdream.ui.screens
 
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -11,7 +13,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -19,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlin.math.abs
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Keys keep image, URI and encoded payload together while the list moves beneath the pointer. */
 @Composable
@@ -83,31 +88,44 @@ internal fun <T> ReorderableReferenceRow(
     LazyRow(
         state = state,
         modifier = Modifier.fillMaxWidth().testTag("reference-image-strip").pointerInput(Unit) {
-            detectDragGesturesAfterLongPress(
-                onDragStart = { point ->
-                    if (latestEnabled) {
-                        val info = state.layoutInfo.visibleItemsInfo.firstOrNull { point.x >= it.offset && point.x <= it.offset + it.size && it.key.toString().startsWith("ref:") }
-                        if (info != null) {
-                            dragged = info.key.toString()
-                            startOffset = info.offset.toFloat()
-                            dragDelta = 0f
-                            draggedWidth = info.size
-                            scrollDirection = 0
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            awaitEachGesture {
+                // Leave ordinary taps and scrolling to the thumbnail/list. Once held,
+                // take moves in Initial pass before the horizontal list consumes them.
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val info = state.layoutInfo.visibleItemsInfo.firstOrNull {
+                    down.position.x >= it.offset && down.position.x <= it.offset + it.size && it.key.toString().startsWith("ref:")
+                }
+                if (!latestEnabled || info == null) return@awaitEachGesture
+                val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    true to waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                }
+                if (released != null) return@awaitEachGesture
+                dragged = info.key.toString()
+                startOffset = info.offset.toFloat()
+                dragDelta = (currentEvent.changes.firstOrNull { it.id == down.id }?.position?.x ?: down.position.x) - down.position.x
+                draggedWidth = info.size
+                scrollDirection = 0
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                updateScrollDirection()
+                reorder()
+                try {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            change.consume()
+                            break
                         }
-                    }
-                },
-                onDrag = { change, delta ->
-                    if (dragged != null) {
-                        dragDelta += delta.x
+                        dragDelta += change.positionChange().x
+                        change.consume()
                         updateScrollDirection()
                         reorder()
-                        change.consume()
                     }
-                },
-                onDragEnd = { dragged = null },
-                onDragCancel = { dragged = null },
-            )
+                } finally {
+                    dragged = null
+                    scrollDirection = 0
+                }
+            }
         },
         contentPadding = PaddingValues(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

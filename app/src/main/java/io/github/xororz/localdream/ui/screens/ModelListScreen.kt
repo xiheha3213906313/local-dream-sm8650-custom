@@ -415,6 +415,14 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
         pageCount = { tabTitles.size },
     )
 
+    // A descendant vertical fling can also enter the pager's scroll mutation.
+    // Reset only when the horizontal category actually changes.
+    val switchingModelCategory by remember {
+        androidx.compose.runtime.derivedStateOf {
+            pagerState.currentPage != pagerState.targetPage || kotlin.math.abs(pagerState.currentPageOffsetFraction) > .001f
+        }
+    }
+
     LaunchedEffect(pagerState.currentPage) {
         val preferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         preferences.edit { putInt("last_viewed_page", pagerState.currentPage) }
@@ -837,8 +845,8 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                     val hasImport = !remoteActive && (page != 2 || DitEngine.isSupportedDevice())
                     var importRevealed by rememberSaveable(page, remoteActive) { mutableStateOf(false) }
                     val libraryState = rememberLazyListState()
-                    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
-                        if (pagerState.isScrollInProgress || page == pagerState.currentPage) {
+                    LaunchedEffect(pagerState.currentPage, switchingModelCategory) {
+                        if (switchingModelCategory || page == pagerState.currentPage) {
                             importRevealed = false
                             libraryState.requestScrollToItem(0)
                         }
@@ -869,7 +877,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier,
                             libraryState.animateScrollToItem(0)
                         }
                     }
-                    val showImport = importRevealed && !pagerState.isScrollInProgress && page == pagerState.currentPage
+                    val showImport = importRevealed && !switchingModelCategory && page == pagerState.currentPage
                     LazyColumn(
                         state = libraryState,
                         modifier = Modifier.fillMaxSize().nestedScroll(revealImport).testTag("model-library-list"),
