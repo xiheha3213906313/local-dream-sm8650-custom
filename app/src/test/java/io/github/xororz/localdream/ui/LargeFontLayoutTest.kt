@@ -499,7 +499,8 @@ class LargeFontLayoutTest(private val scale: Float) {
             compose.onNodeWithText("NPU").assertIsDisplayed()
             compose.onNodeWithTag("model-import-entry").assertDoesNotExist()
             compose.onNodeWithTag("model-library-list").performTouchInput { swipeDown(startY = height * .25f, endY = height * .8f, durationMillis = 500) }
-            compose.onNodeWithTag("model-import-entry").assertIsDisplayed().assertHasClickAction()
+            compose.onNodeWithTag("model-import-entry").assertIsDisplayed()
+            compose.onNode(hasClickAction() and hasAnyAncestor(hasTestTag("model-import-entry")), useUnmergedTree = true).assertIsDisplayed()
             capture("v014-library-pull-import")
         } finally {
             dirs.forEach { it.deleteRecursively() }
@@ -648,6 +649,9 @@ class LargeFontLayoutTest(private val scale: Float) {
         compose.runOnIdle { assertTrue(opened) }
     }
     private fun openLibrary(): List<File> {
+        // Robolectric replaces Application/storage between methods while Kotlin statics can
+        // retain the previous Application. Scan the fixture with this test's actual context.
+        ModelRepository::class.java.getDeclaredField("instance").apply { isAccessible = true }.set(null, null)
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE).edit().putBoolean("is_first_launch", false).putInt("last_viewed_page", 0).commit()
         val dirs = (0..17).map { index ->
@@ -657,6 +661,7 @@ class LargeFontLayoutTest(private val scale: Float) {
             }
         }
         kotlinx.coroutines.runBlocking { ModelRepository.getInstance(context).refreshAllModels() }
+        assertEquals("The scrolling fixture was not loaded into the actual repository", 18, ModelRepository.getInstance(context).models.count { it.id.startsWith("ui_scroll_") })
         show { ModelListScreen(androidx.navigation.compose.rememberNavController()) }
         compose.onNodeWithTag("model-library-list").assertIsDisplayed()
         capture("v014-library-initial")
