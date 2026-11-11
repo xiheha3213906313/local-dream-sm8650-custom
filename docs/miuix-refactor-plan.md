@@ -34,4 +34,4 @@ Final input layout: positive and negative prompts are both visible; the lower pa
 - [x] Caption image actions, consolidate editing tools into one row, remove duplicate thumbnail-side action buttons.
 - [x] Cap the positive prompt region so the independent negative prompt immediately follows its actual border.
 - [x] 106 regression checks passed in GitHub Actions, including four font scales and runtime drag reversal; final local build, original certificate, APK CRC/alignment and staged native libraries verified.
-- [ ] Publish v0.13 without downloading published assets.
+- [x] Source `8bb493e` pushed and release `sm8650-miuix-v0.13` published. Upload run `42998479533` succeeded; only release and asset metadata checked afterward, no published-file downloads.
