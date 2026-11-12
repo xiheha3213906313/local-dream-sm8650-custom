@@ -101,4 +101,3 @@ Local Dream is built on top of many excellent open-source projects. Sincere than
 - **[xinntao/Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)** - Image upscaling
 - **[Kim2091/UltraSharpV2](https://huggingface.co/Kim2091/UltraSharpV2)** - Image upscaling
 - **[bhky/opennsfw2](https://github.com/bhky/opennsfw2)** - NSFW content filtering
-
