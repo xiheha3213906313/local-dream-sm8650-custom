@@ -35,14 +35,13 @@ android {
         applicationId = "io.github.xororz.localdream"
         if (sm8650Compat) {
             applicationIdSuffix = ".sm8650"
-            versionNameSuffix = "-sm8650"
         }
         manifestPlaceholders["localDreamLabel"] = if (sm8650Compat) "Local Dream SM8650" else "@string/app_name"
         minSdk = 28
 //        minSdk = 31
         targetSdk = 36
-        versionCode = 93
-        versionName = "3.0.0-alpha.8.9"
+        versionCode = 94
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -81,7 +80,8 @@ android {
     }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Keep updates installable over the published SM8650 packages.
+            signingConfig = signingConfigs.getByName(if (sm8650Compat) "debug" else "release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
