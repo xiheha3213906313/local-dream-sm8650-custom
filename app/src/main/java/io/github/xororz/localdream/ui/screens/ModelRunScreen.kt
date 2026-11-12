@@ -514,6 +514,7 @@ fun ModelRunScreen(
     var baseSourceHeight by remember { mutableIntStateOf(0) }
     var baseCropAnchor by remember { mutableStateOf<AndroidRect?>(null) }
     var baseCropRevision by remember { mutableIntStateOf(0) }
+    var resolutionAdjusting by remember { mutableStateOf(false) }
     var cropSourceIsGallery by remember { mutableStateOf(true) }
     val ownedBaseSources = remember { mutableListOf<File>() }
     DisposableEffect(Unit) { onDispose { ownedBaseSources.forEach { it.delete() } } }
@@ -1029,11 +1030,12 @@ fun ModelRunScreen(
 
     // Retain the user's original crop anchor. Automatic adjustments always start
     // there, so changing sizes back and forth never accumulates crop drift.
-    LaunchedEffect(baseImageSourceUri, baseCropAnchor, baseCropRevision, currentWidth, currentHeight, aspectRatio) {
+    LaunchedEffect(baseImageSourceUri, baseCropAnchor, baseCropRevision, currentWidth, currentHeight, aspectRatio, resolutionAdjusting) {
         val uri = baseImageSourceUri ?: return@LaunchedEffect
         val anchor = baseCropAnchor?.let(::AndroidRect) ?: return@LaunchedEffect
         if (baseSourceWidth <= 0 || baseSourceHeight <= 0) return@LaunchedEffect
         base64EncodeDone = false
+        if (resolutionAdjusting) return@LaunchedEffect
         val target = CropOutputSize(effectiveWidth, effectiveHeight)
         val revision = baseCropRevision
         val sourceWidth = baseSourceWidth
@@ -2266,6 +2268,7 @@ fun ModelRunScreen(
                 applyCanvasResolution(output.width, output.height)
             },
             onAspectPresetFinished = { if (baseImageSourceUri != null) editBaseCrop() },
+            onResolutionAdjusting = { resolutionAdjusting = it },
             onAspectLockChange = { locked ->
                 lockedAspect = currentWidth.toDouble() / currentHeight
                 aspectLocked = locked
@@ -2384,7 +2387,7 @@ fun ModelRunScreen(
                     } else {
                         Button(
                             onClick = ::startGeneration,
-                            enabled = model != null && serviceState !is GenerationState.Progress && !isUpscaling && !isUltrafixPreparing && (selectedImageUri == null || base64EncodeDone),
+                            enabled = model != null && serviceState !is GenerationState.Progress && !isUpscaling && !isUltrafixPreparing && (selectedImageUri == null || (base64EncodeDone && !resolutionAdjusting)),
                             modifier = Modifier.fillMaxWidth().testTag("generate-action"),
                         ) { Text(stringResource(R.string.generate_image)) }
                     }

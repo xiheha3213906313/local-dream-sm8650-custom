@@ -241,6 +241,7 @@ fun PromptTagTextField(
                                 isError = false,
                                 interactionSource = interactionSource,
                                 colors = outlinedColors,
+                                modifier = Modifier.matchParentSize(),
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
                             )
                             if (outlineCounter.isNotBlank()) {

@@ -7,11 +7,12 @@ import androidx.compose.ui.input.pointer.*
 
 /** Tap or hold-and-scrub without turning the end of a drag into a second click. */
 @Composable
-internal fun Modifier.scrubGesture(key: Any, enabled: Boolean = true, onTap: () -> Unit, onStart: () -> Unit, onMove: (Float) -> Unit, onEnd: () -> Unit): Modifier {
+internal fun Modifier.scrubGesture(key: Any, enabled: Boolean = true, onTap: () -> Unit, onStart: () -> Unit, onMove: (Float) -> Unit, onEnd: () -> Unit, distanceBounds: () -> ClosedFloatingPointRange<Float> = { -Float.MAX_VALUE..Float.MAX_VALUE }): Modifier {
     val tap by rememberUpdatedState(onTap)
     val start by rememberUpdatedState(onStart)
     val move by rememberUpdatedState(onMove)
     val end by rememberUpdatedState(onEnd)
+    val bounds by rememberUpdatedState(distanceBounds)
     return if (!enabled) {
         this
     } else {
@@ -31,7 +32,7 @@ internal fun Modifier.scrubGesture(key: Any, enabled: Boolean = true, onTap: () 
                     var distance = 0f
                     try {
                         horizontalDrag(down.id) { change ->
-                            distance += change.positionChange().x
+                            distance = (distance + change.positionChange().x).coerceIn(bounds())
                             move(distance)
                             change.consume()
                         }

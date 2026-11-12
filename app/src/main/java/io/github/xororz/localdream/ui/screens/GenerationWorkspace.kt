@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
@@ -39,10 +40,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.github.xororz.localdream.R
+import io.github.xororz.localdream.data.DitResolution
 import io.github.xororz.localdream.data.Resolution
 import io.github.xororz.localdream.ui.design.*
 import kotlin.math.roundToInt
@@ -72,6 +74,7 @@ internal fun GenerationWorkspace(
     lockedRatio: Double? = null,
     onAspectPresetSelected: (Double) -> Unit = {},
     onAspectPresetFinished: () -> Unit = {},
+    onResolutionAdjusting: (Boolean) -> Unit = {},
     onAspectRatioSelected: (String) -> Unit,
     onCustomAspectRatioClick: () -> Unit,
     onResolutionSelected: (Resolution) -> Unit,
@@ -118,6 +121,7 @@ internal fun GenerationWorkspace(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val ratioTick = with(density) { 32.dp.toPx() }
+    val promptExpansion by animateFloatAsState(if (positiveExpanded) 1f else 0f, tween(220, easing = CubicBezierEasing(.2f, 0f, 0f, 1f)), label = "positive-prompt-expansion")
     LaunchedEffect(positiveFocused) { if (positiveFocused) negativeExpanded = false }
     LaunchedEffect(closingRequested, keyboardVisible) {
         if (closingRequested && !keyboardVisible) {
@@ -147,9 +151,51 @@ internal fun GenerationWorkspace(
     BackHandler(enabled = active != null) { finishEdit() }
     BackHandler(enabled = positiveExpanded && active == null && !keyboardVisible) { collapsePrompt() }
     val linkedDescription = stringResource(R.string.ui_linked_adjust)
+    fun ticks(value: Float, min: Float, max: Float, step: Float = 1f): IntRange = kotlin.math.floor((min - value) / step + .0001f).toInt().coerceAtMost(0)..kotlin.math.ceil((max - value) / step - .0001f).toInt().coerceAtLeast(0)
+    fun dimensionTicks(value: Int, width: Boolean): IntRange {
+        val ratio = lockedRatio?.takeIf { aspectLocked && it.isFinite() && it > 0 }
+            ?: return ticks(value.toFloat(), DIT_MIN_SIZE.toFloat(), DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEP.toFloat())
+        val low = DitResolution.lockedSize(DIT_MIN_SIZE.toFloat(), ratio, width)
+        val high = DitResolution.lockedSize(DIT_MAX_SIZE.toFloat(), ratio, width)
+        return ticks(value.toFloat(), (if (width) low.first else low.second).toFloat(), (if (width) high.first else high.second).toFloat(), DIT_SIZE_STEP.toFloat())
+    }
+    fun adjustmentRange(id: String): IntRange {
+        val resolutionIndex = availableResolutions.indexOfFirst { it.width == currentWidth && it.height == currentHeight }.coerceAtLeast(0)
+        val resolutionRange = -resolutionIndex..(availableResolutions.lastIndex - resolutionIndex).coerceAtLeast(0)
+        return when (id) {
+            "width" -> when {
+                isDit -> dimensionTicks(currentWidth, true)
+                runOnCpu -> ticks(currentWidth.toFloat(), 128f, 512f, 64f)
+                else -> resolutionRange
+            }
+
+            "height" -> if (isDit) dimensionTicks(currentHeight, false) else resolutionRange
+
+            "steps" -> ticks(steps, 1f, 50f)
+
+            "cfg" -> ticks(cfg, 1f, 30f, .5f)
+
+            "batch" -> ticks(batchCounts.toFloat(), 1f, 10f)
+
+            "denoise" -> ticks(denoiseStrength, 0f, 1f, .01f)
+
+            "runtime" -> if (useOpenCL) -1..0 else 0..1
+
+            "scheduler" -> listOf("dpm", "dpm_sde", "euler_a", "euler", "lcm").indexOf(scheduler.removeSuffix("_karras")).coerceAtLeast(0).let { -it..4 - it }
+
+            "aspect" -> listOf("1:1", "3:4", "4:3").indexOf(aspectRatio).coerceAtLeast(0).let { -it..2 - it }
+
+            "seed" -> {
+                val start = (seed.toLongOrNull() ?: returnedSeed ?: 0L).coerceAtLeast(0L)
+                -start.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()..(Long.MAX_VALUE - start).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            }
+
+            else -> 0..0
+        }
+    }
     val fields = mutableListOf<WorkspaceParameter>()
     fun field(id: String, label: String, value: String, enabled: Boolean = true) {
-        fields += WorkspaceParameter(id, label, value, enabled)
+        fields += WorkspaceParameter(id, label, value, enabled, adjustmentRange(id))
     }
     field("width", stringResource(R.string.ui_width), currentWidth.toString(), !isRunning && (isDit || (runOnCpu && !isSdxl) || (!isSdxl && availableResolutions.isNotEmpty())))
     field("height", stringResource(R.string.ui_height), currentHeight.toString(), !isRunning && (isDit || (!runOnCpu && !isSdxl && availableResolutions.isNotEmpty())))
@@ -209,7 +255,8 @@ internal fun GenerationWorkspace(
     BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
         val compact = maxHeight < 420.dp || keyboardVisible
         val showParameters = parametersExpanded && ((!compact && !promptFocused) || (active != null && !keyboardVisible))
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp).testTag("generation-workspace"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val fullPrompt = with(density) { Rect(16.dp.toPx(), 6.dp.toPx(), maxWidth.toPx() - 16.dp.toPx(), (maxHeight.toPx() - 6.dp.toPx()).coerceAtLeast(7.dp.toPx())) }
+        Column(Modifier.fillMaxSize().zIndex(if (promptExpansion > 0f && active == null) 2f else 0f).padding(horizontal = 16.dp, vertical = 6.dp).testTag("generation-workspace"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (inputs != null) {
                 AnimatedVisibility(
                     visible = !keyboardVisible || active != null,
@@ -220,10 +267,33 @@ internal fun GenerationWorkspace(
                 }
             }
             Box(
-                Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 192.dp).fillMaxHeight().onGloballyPositioned {
+                Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 192.dp).fillMaxHeight().zIndex(if (promptExpansion > 0f) 1f else 0f).onGloballyPositioned {
                     positiveBounds = Rect(it.positionInWindow() - origin, Size(it.size.width.toFloat(), it.size.height.toFloat()))
                 }.testTag("positive-prompt-slot"),
-            )
+            ) {
+                // Keep the editor in normal layout. The surrounding animated sections
+                // resize it and move the next heading in the same layout pass.
+                Box(
+                    Modifier.layout { measurable, constraints ->
+                        val fraction = promptExpansion
+                        val width = (constraints.maxWidth + (fullPrompt.width - constraints.maxWidth) * fraction).roundToInt().coerceAtLeast(1)
+                        val height = (constraints.maxHeight + (fullPrompt.height - constraints.maxHeight) * fraction).roundToInt().coerceAtLeast(1)
+                        val editor = measurable.measure(Constraints.fixed(width, height))
+                        layout(constraints.maxWidth, constraints.maxHeight) {
+                            editor.place(((fullPrompt.left - positiveBounds.left) * fraction).roundToInt(), ((fullPrompt.top - positiveBounds.top) * fraction).roundToInt())
+                        }
+                    }.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                        .testTag("positive-prompt-editor").semantics { if (positiveCount.isNotBlank()) stateDescription = positiveCount },
+                ) {
+                    positive()
+                    IconButton(onClick = {
+                        negativeExpanded = false
+                        if (positiveExpanded) collapsePrompt() else positiveExpanded = true
+                    }, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(36.dp).testTag("positive-prompt-expand")) {
+                        Icon(if (positiveExpanded) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull, stringResource(if (positiveExpanded) R.string.ui_prompt_collapse else R.string.ui_prompt_expand), Modifier.size(20.dp))
+                    }
+                }
+            }
             // Independent prompt section directly below the positive prompt, outside the parameters.
             Column(Modifier.fillMaxWidth().testTag("negative-prompt-section"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
@@ -281,6 +351,7 @@ internal fun GenerationWorkspace(
                                         onAdjust = { ticks -> adjust(field.id, ticks) },
                                         onDragging = {
                                             dragging = if (it) field.id else null
+                                            if (field.id == "width" || field.id == "height") onResolutionAdjusting(it)
                                             if (it) {
                                                 dragPreview = field.id
                                                 dragDistance = 0f
@@ -309,14 +380,16 @@ internal fun GenerationWorkspace(
                                                     ratioIndex = CommonAspectRatios.indices.minBy { kotlin.math.abs(CommonAspectRatios[it].second - (lockedRatio ?: currentWidth.toDouble() / currentHeight)) }
                                                     initialRatio = ratioIndex
                                                     ratioPicker = true
+                                                    onResolutionAdjusting(true)
                                                     onAspectPresetSelected(CommonAspectRatios[ratioIndex].second)
                                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 }, { distance -> chooseRatio(initialRatio + (distance / ratioTick).toInt()) }, {
                                                     if (ratioPicker) {
                                                         ratioPicker = false
+                                                        onResolutionAdjusting(false)
                                                         onAspectPresetFinished()
                                                     }
-                                                })
+                                                }, { -initialRatio * ratioTick..(CommonAspectRatios.lastIndex - initialRatio) * ratioTick })
                                                 .testTag("aspect-ratio-lock").semantics {
                                                     role = Role.Checkbox
                                                     toggleableState = if (aspectLocked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off
@@ -345,29 +418,6 @@ internal fun GenerationWorkspace(
             }
             if (status != null) Text(status, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        // The ghost slot determines layout; this one persistent editor follows
-        // its animated bounds, including IME changes and panel expansion.
-        if (positiveBounds.width > 0) {
-            val normal = positiveBounds.copy(bottom = positiveBounds.top + positiveBounds.height.coerceAtLeast(with(density) { 104.dp.toPx() }))
-            val full = with(density) { Rect(16.dp.toPx(), 6.dp.toPx(), maxWidth.toPx() - 16.dp.toPx(), (maxHeight.toPx() - 6.dp.toPx()).coerceAtLeast(7.dp.toPx())) }
-            val target = if (positiveExpanded) full else normal
-            val bounds by animateValueAsState(target, Rect.VectorConverter, spring(dampingRatio = 1f, stiffness = 700f), label = "positive-prompt-bounds")
-            Box(
-                Modifier.offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
-                    .size(with(density) { bounds.width.coerceAtLeast(1f).toDp() }, with(density) { bounds.height.coerceAtLeast(1f).toDp() })
-                    .zIndex(if (positiveExpanded || bounds.height > normal.height + 1f) 3f else 0f)
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
-                    .testTag("positive-prompt-editor").semantics { if (positiveCount.isNotBlank()) stateDescription = positiveCount },
-            ) {
-                positive()
-                IconButton(onClick = {
-                    negativeExpanded = false
-                    if (positiveExpanded) collapsePrompt() else positiveExpanded = true
-                }, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(36.dp).testTag("positive-prompt-expand")) {
-                    Icon(if (positiveExpanded) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull, stringResource(if (positiveExpanded) R.string.ui_prompt_collapse else R.string.ui_prompt_expand), Modifier.size(20.dp))
-                }
-            }
-        }
         val selected = fields.firstOrNull { it.id == active }
         val source = anchors[active]
         if (selected != null && source != null) {
@@ -381,13 +431,13 @@ internal fun GenerationWorkspace(
             ) {
                 when (active) {
                     "width" -> if (isDit || runOnCpu) {
-                        NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit)
+                        NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit, onResolutionAdjusting)
                     } else {
                         ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
                     }
 
                     "height" -> if (isDit) {
-                        NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit)
+                        NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit, onResolutionAdjusting)
                     } else {
                         ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
                     }
@@ -457,6 +507,7 @@ internal fun GenerationWorkspace(
                     ratioIndex = index
                     onAspectPresetSelected(CommonAspectRatios[index].second)
                     ratioPicker = false
+                    onResolutionAdjusting(false)
                     onAspectPresetFinished()
                 }
             }
@@ -464,7 +515,7 @@ internal fun GenerationWorkspace(
     }
 }
 
-private data class WorkspaceParameter(val id: String, val label: String, val value: String, val enabled: Boolean)
+private data class WorkspaceParameter(val id: String, val label: String, val value: String, val enabled: Boolean, val adjustmentRange: IntRange)
 
 @Composable
 private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjust: (Int) -> Unit, onDragging: (Boolean) -> Unit, onDistance: (Float) -> Unit, onClick: () -> Unit) {
@@ -473,10 +524,12 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
     val tickPixels = with(LocalDensity.current) { 12.dp.toPx() }
     var adjustFromStart by remember { mutableStateOf<(Int) -> Unit>({}) }
     var previousTicks by remember { mutableIntStateOf(0) }
+    var tickBounds by remember { mutableStateOf(0..0) }
     val gesture = Modifier.scrubGesture(field.id, field.enabled, onClick, {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         onDragging(true)
         adjustFromStart = onAdjust
+        tickBounds = field.adjustmentRange
         previousTicks = 0
     }, { distance ->
         onDistance(distance)
@@ -486,7 +539,7 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
             previousTicks = ticks
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
-    }, { onDragging(false) })
+    }, { onDragging(false) }, { -tickBounds.last.toFloat() * tickPixels..-tickBounds.first.toFloat() * tickPixels })
     Card(
         modifier.then(gesture).testTag("parameter-${field.id}").semantics(mergeDescendants = true) {
             role = Role.Button
@@ -508,17 +561,29 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
 }
 
 @Composable
-private fun NumberEditor(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int, integer: Boolean, onChange: (Float) -> Unit, onDone: () -> Unit) {
+private fun NumberEditor(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int, integer: Boolean, onChange: (Float) -> Unit, onDone: () -> Unit, onAdjusting: (Boolean) -> Unit = {}) {
     var entry by rememberSaveable(label) { mutableStateOf(if (integer) value.roundToInt().toString() else "%.2f".format(java.util.Locale.ROOT, value)) }
+    val haptic = LocalHapticFeedback.current
+    fun tick(next: Float) = ((next.coerceIn(range) - range.start) / (range.endInclusive - range.start) * (steps + 1)).roundToInt()
+    var lastTick by remember(label) { mutableIntStateOf(tick(value)) }
+    val adjusting by rememberUpdatedState(onAdjusting)
+    DisposableEffect(Unit) { onDispose { adjusting(false) } }
+    LaunchedEffect(value) { lastTick = tick(value) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ParameterNumberInput(label, entry, { next ->
             entry = next
             next.toFloatOrNull()?.takeIf { it.isFinite() }?.let { onChange(it.coerceIn(range)) }
         }, integer, onDone)
         Slider(value.coerceIn(range), { next ->
+            adjusting(true)
+            val nextTick = tick(next)
+            if (nextTick != lastTick) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                lastTick = nextTick
+            }
             entry = if (integer) next.roundToInt().toString() else "%.2f".format(java.util.Locale.ROOT, next)
             onChange(next)
-        }, valueRange = range, steps = steps)
+        }, valueRange = range, steps = steps, onValueChangeFinished = { adjusting(false) })
         Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.confirm)) }
     }
 }
