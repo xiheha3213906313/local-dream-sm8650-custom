@@ -49,6 +49,7 @@ internal class PromptFieldController(
     var fieldValue by mutableStateOf(TextFieldValue(""))
         private set
     val text: String get() = fieldValue.text
+    val countLabel: String get() = "$tokenCount/${if (tokenMax > 0) tokenMax.toString() else "∞"}"
 
     var suggestions by mutableStateOf<List<TagSuggestion>>(emptyList())
         private set
@@ -252,6 +253,7 @@ internal fun ControlledPromptTagTextField(
     modifier: Modifier = Modifier,
     fixedViewport: Boolean = false,
     labelInOutline: Boolean = false,
+    outlineCounter: String = "",
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val popupVisible =
@@ -269,6 +271,7 @@ internal fun ControlledPromptTagTextField(
             modifier = Modifier.fillMaxWidth(),
             label = { if (!fixedViewport || labelInOutline) label() },
             labelInOutline = labelInOutline,
+            outlineCounter = outlineCounter,
             bottomInset = bottomInset,
             allowExpand = !fixedViewport,
             fillViewport = fixedViewport,

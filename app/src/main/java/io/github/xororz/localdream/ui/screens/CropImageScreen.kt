@@ -1,227 +1,170 @@
 package io.github.xororz.localdream.ui.screens
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Rect as AndroidRect
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.xororz.localdream.R
-import io.github.xororz.localdream.ui.design.Card
+import io.github.xororz.localdream.ui.design.ChoiceControl
 import io.github.xororz.localdream.ui.design.IconButton
 import io.github.xororz.localdream.ui.design.Scaffold
 import io.github.xororz.localdream.ui.design.Text
 import io.moyuru.cropify.Cropify
 import io.moyuru.cropify.CropifyOption
 import io.moyuru.cropify.CropifySize
+import io.moyuru.cropify.CropifyState
 import io.moyuru.cropify.rememberCropifyState
-import java.io.ByteArrayOutputStream
-import java.util.Base64
+import kotlin.math.abs
+import kotlin.math.ln
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+
+/** The pinned crop library exposes its geometry only as internal mutable state. */
+private class CropFrameAccess(private val state: CropifyState) {
+    @Suppress("UNCHECKED_CAST")
+    private fun geometry(name: String) = state.javaClass.getDeclaredField(name + "\$delegate").apply { isAccessible = true }.get(state) as MutableState<Rect>
+    private val frameState = geometry("frameRect")
+    private val imageState = geometry("imageRect")
+    var frame: Rect
+        get() = frameState.value
+        set(value) {
+            frameState.value = value
+        }
+    val image get() = imageState.value
+
+    fun sourceRect(preview: CropPreview): AndroidRect? {
+        if (image.width <= 0 || image.height <= 0 || frame.width <= 0 || frame.height <= 0) return null
+        val left = ((frame.left - image.left) * preview.sourceWidth / image.width).roundToInt().coerceIn(0, preview.sourceWidth - 1)
+        val top = ((frame.top - image.top) * preview.sourceHeight / image.height).roundToInt().coerceIn(0, preview.sourceHeight - 1)
+        val right = ((frame.right - image.left) * preview.sourceWidth / image.width).roundToInt().coerceIn(left + 1, preview.sourceWidth)
+        val bottom = ((frame.bottom - image.top) * preview.sourceHeight / image.height).roundToInt().coerceIn(top + 1, preview.sourceHeight)
+        return AndroidRect(left, top, right, bottom)
+    }
+
+    fun restore(rect: AndroidRect, preview: CropPreview) {
+        frame = Rect(
+            image.left + rect.left.toFloat() * image.width / preview.sourceWidth,
+            image.top + rect.top.toFloat() * image.height / preview.sourceHeight,
+            image.left + rect.right.toFloat() * image.width / preview.sourceWidth,
+            image.top + rect.bottom.toFloat() * image.height / preview.sourceHeight,
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun CropImageScreen(
+internal fun CropImageScreen(
     imageUri: Uri,
-    width: Int,
-    height: Int,
-    onCropComplete: (String, Bitmap, AndroidRect) -> Unit,
+    policy: CropOutputPolicy,
+    initialCrop: AndroidRect?,
+    onCropComplete: (CropSelection) -> Unit,
     onCancel: () -> Unit,
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val cropifyState = rememberCropifyState()
-
-    val msgErrorWithDetail = stringResource(R.string.error_with_detail)
-    val msgUnknownError = stringResource(R.string.unknown_error)
-
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    val aspectRatio = if (width > 0 && height > 0) {
-        height.toFloat() / width.toFloat()
-    } else {
-        1f
-    }
-
-    val handleCroppedImage: (ImageBitmap) -> Unit = { bitmap ->
-        coroutineScope.launch {
-            isLoading = true
-            try {
-                val androidBitmap = bitmap.asAndroidBitmap()
-
-                // Reflection to get frameRect and imageRect from Cropify internals.
-                // Generic type is erased through Field.get(); suppression is intentional.
-                @Suppress("UNCHECKED_CAST")
-                val frameRectState = cropifyState::class.java
-                    .getDeclaredField("frameRect\$delegate")
-                    .apply { isAccessible = true }
-                    .get(cropifyState) as State<androidx.compose.ui.geometry.Rect>
-                val frameRect = frameRectState.value
-
-                @Suppress("UNCHECKED_CAST")
-                val imageRectState = cropifyState::class.java
-                    .getDeclaredField("imageRect\$delegate")
-                    .apply { isAccessible = true }
-                    .get(cropifyState) as State<androidx.compose.ui.geometry.Rect>
-                val imageRect = imageRectState.value
-
-                // Get original image dimensions
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(imageUri)!!.use {
-                    BitmapFactory.decodeStream(it, null, options)
-                }
-                val originalWidth = options.outWidth
-
-                // Calculate crop rect in original image coordinates
-                val scale = originalWidth.toFloat() / imageRect.width
-                val cropX = ((frameRect.left - imageRect.left) * scale).toInt()
-                val cropY = ((frameRect.top - imageRect.top) * scale).toInt()
-                val cropWidth = (frameRect.width * scale).toInt()
-                val cropHeight = (frameRect.height * scale).toInt()
-
-                val cropRect = AndroidRect(cropX, cropY, cropX + cropWidth, cropY + cropHeight)
-
-                val base64String = withContext(Dispatchers.IO) {
-                    val byteArrayOutputStream = ByteArrayOutputStream()
-                    androidBitmap.compress(Bitmap.CompressFormat.PNG, 90, byteArrayOutputStream)
-                    val byteArray = byteArrayOutputStream.toByteArray()
-                    Base64.getEncoder().encodeToString(byteArray)
-                }
-                onCropComplete(base64String, androidBitmap, cropRect)
-            } catch (e: Exception) {
-                errorMessage = msgErrorWithDetail.format(e.message ?: msgUnknownError)
-            } finally {
-                isLoading = false
-            }
+    val cropState = rememberCropifyState()
+    val access = remember(cropState) { CropFrameAccess(cropState) }
+    var preview by remember(imageUri) { mutableStateOf<CropPreview?>(null) }
+    var error by remember(imageUri) { mutableStateOf<String?>(null) }
+    var ratio by remember(imageUri) { mutableStateOf<Double?>(policy.current.ratio) }
+    var anchor by remember(imageUri) { mutableStateOf(initialCrop?.let(::AndroidRect)) }
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    val msgError = stringResource(R.string.error_with_detail)
+    LaunchedEffect(imageUri) {
+        try {
+            preview = withContext(Dispatchers.IO) { loadCropPreview(context, imageUri) }
+        } catch (e: Exception) {
+            error = msgError.format(e.message.orEmpty())
         }
     }
-
-    BackHandler {
-        onCancel()
+    val source = preview
+    val frame = access.frame
+    val frameRatio = if (frame.height > 0) frame.width.toDouble() / frame.height else policy.current.ratio
+    val output = remember(policy, ratio, if (ratio == null) frameRatio else 0.0) { policy.choose(ratio ?: frameRatio, exact = ratio != null) }
+    fun chooseRatio(value: Double?) {
+        source?.let { access.sourceRect(it) }?.let { anchor = it }
+        ratio = value
     }
-
+    BackHandler(onBack = onCancel)
     Scaffold(
         containerColor = Color.Black,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.crop_image)) },
-                navigationIcon = {
-                    IconButton(onClick = onCancel) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                        )
-                    }
-                },
+                title = { Text(stringResource(R.string.crop_image), maxLines = 1) },
+                navigationIcon = { IconButton(onCancel) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(android.R.string.cancel)) } },
                 actions = {
-                    IconButton(onClick = { cropifyState.crop() }) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Crop",
-                        )
-                    }
+                    IconButton(onClick = {
+                        source?.let { loaded ->
+                            access.sourceRect(loaded)?.let { selected ->
+                                val snapped = fitImageCrop(selected, loaded.sourceWidth, loaded.sourceHeight, output.ratio)
+                                onCropComplete(CropSelection(imageUri, loaded.sourceWidth, loaded.sourceHeight, snapped, output))
+                            }
+                        }
+                    }, enabled = source != null && frame.width > 0 && error == null) { Icon(Icons.Default.Check, stringResource(R.string.confirm)) }
                 },
             )
         },
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-        ) {
-            Cropify(
-                uri = imageUri,
-                state = cropifyState,
-                onImageCropped = handleCroppedImage,
-                onFailedToLoadImage = { error ->
-                    errorMessage = msgErrorWithDetail.format(error.message ?: msgUnknownError)
-                },
-                option = CropifyOption(
-                    frameSize = CropifySize.FixedAspectRatio(aspectRatio),
-                    frameColor = MaterialTheme.colorScheme.primary,
-                    gridColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                ),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .align(Alignment.BottomCenter),
-            ) {
-                Text(
-                    text = stringResource(R.string.crop_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
-
-            if (isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ContainedLoadingIndicator()
-                }
-            }
-
-            errorMessage?.let { error ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
-                    ) {
-                        Text(
-                            text = error,
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { ChoiceControl(stringResource(R.string.ui_crop_free), { chooseRatio(null) }, checked = ratio == null, height = 36.dp) }
+                    items(CommonAspectRatios) { (label, value) ->
+                        ChoiceControl(label, { chooseRatio(value) }, checked = ratio?.let { abs(ln(it / value)) < .001 } == true, enabled = policy.supports(value), height = 36.dp)
                     }
                 }
+                Text("${output.width} × ${output.height}", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Box(Modifier.fillMaxWidth().weight(1f).onSizeChanged { viewport = it }, contentAlignment = Alignment.Center) {
+                if (source != null) {
+                    val bitmap = remember(source.bitmap) { source.bitmap.asImageBitmap() }
+                    Cropify(
+                        bitmap = bitmap,
+                        state = cropState,
+                        onImageCropped = {},
+                        option = CropifyOption(
+                            frameSize = ratio?.let { CropifySize.FixedAspectRatio((1.0 / output.ratio).toFloat()) } ?: CropifySize.PercentageSize(.8f),
+                            frameColor = MaterialTheme.colorScheme.primary,
+                            gridColor = MaterialTheme.colorScheme.primary.copy(alpha = .6f),
+                        ),
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 36.dp),
+                    )
+                    // Run after Cropify's layout effect, which initially centres its frame.
+                    LaunchedEffect(bitmap, ratio, viewport) {
+                        snapshotFlow { access.image }.first { it.width > 0 && it.height > 0 }
+                        withFrameNanos { }
+                        val area = anchor ?: AndroidRect(source.sourceWidth / 10, source.sourceHeight / 10, source.sourceWidth * 9 / 10, source.sourceHeight * 9 / 10)
+                        access.restore(if (ratio == null) area else fitImageCrop(area, source.sourceWidth, source.sourceHeight, output.ratio), source)
+                    }
+                } else if (error == null) {
+                    ContainedLoadingIndicator()
+                }
+                Text(error ?: stringResource(R.string.crop_hint), Modifier.align(Alignment.BottomCenter).padding(16.dp), color = if (error == null) Color.White.copy(alpha = .75f) else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

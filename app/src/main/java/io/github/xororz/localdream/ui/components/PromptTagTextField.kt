@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -124,6 +125,7 @@ fun PromptTagTextField(
     allowExpand: Boolean = true,
     fillViewport: Boolean = false,
     labelInOutline: Boolean = false,
+    outlineCounter: String = "",
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     io.github.xororz.localdream.ui.design.ClearFocusOnImeDismiss()
@@ -138,6 +140,7 @@ fun PromptTagTextField(
     var innerHeightPx by remember { mutableFloatStateOf(0f) }
     val interactionSource = remember { MutableInteractionSource() }
     val density = LocalDensity.current
+    var counterHeight by remember { mutableIntStateOf(0) }
     val outlinedColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -232,13 +235,28 @@ fun PromptTagTextField(
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp + bottomInset),
                     colors = outlinedColors,
                     container = {
-                        OutlinedTextFieldDefaults.Container(
-                            enabled = enabled,
-                            isError = false,
-                            interactionSource = interactionSource,
-                            colors = outlinedColors,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                        )
+                        Box(Modifier.fillMaxWidth().fillMaxHeight()) {
+                            OutlinedTextFieldDefaults.Container(
+                                enabled = enabled,
+                                isError = false,
+                                interactionSource = interactionSource,
+                                colors = outlinedColors,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                            )
+                            if (outlineCounter.isNotBlank()) {
+                                Text(
+                                    outlineCounter,
+                                    Modifier.align(Alignment.TopEnd).padding(end = 12.dp)
+                                        .offset { IntOffset(0, -counterHeight / 2) }
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(horizontal = 4.dp)
+                                        .onGloballyPositioned { counterHeight = it.size.height },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                     },
                 )
             },

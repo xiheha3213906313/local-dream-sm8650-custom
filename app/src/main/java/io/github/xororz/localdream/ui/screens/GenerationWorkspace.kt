@@ -1,9 +1,8 @@
 package io.github.xororz.localdream.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -72,6 +71,7 @@ internal fun GenerationWorkspace(
     onAspectLockChange: (Boolean) -> Unit = {},
     lockedRatio: Double? = null,
     onAspectPresetSelected: (Double) -> Unit = {},
+    onAspectPresetFinished: () -> Unit = {},
     onAspectRatioSelected: (String) -> Unit,
     onCustomAspectRatioClick: () -> Unit,
     onResolutionSelected: (Resolution) -> Unit,
@@ -146,8 +146,6 @@ internal fun GenerationWorkspace(
     }
     BackHandler(enabled = active != null) { finishEdit() }
     BackHandler(enabled = positiveExpanded && active == null && !keyboardVisible) { collapsePrompt() }
-    val promptProgress = remember { Animatable(0f) }
-    LaunchedEffect(positiveExpanded) { promptProgress.animateTo(if (positiveExpanded) 1f else 0f, tween(220, easing = CubicBezierEasing(.2f, 0f, 0f, 1f))) }
     val linkedDescription = stringResource(R.string.ui_linked_adjust)
     val fields = mutableListOf<WorkspaceParameter>()
     fun field(id: String, label: String, value: String, enabled: Boolean = true) {
@@ -212,7 +210,15 @@ internal fun GenerationWorkspace(
         val compact = maxHeight < 420.dp || keyboardVisible
         val showParameters = parametersExpanded && ((!compact && !promptFocused) || (active != null && !keyboardVisible))
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp).testTag("generation-workspace"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (inputs != null && (!keyboardVisible || active != null)) Box(Modifier.fillMaxWidth().testTag("workspace-image-inputs")) { inputs(compact) }
+            if (inputs != null) {
+                AnimatedVisibility(
+                    visible = !keyboardVisible || active != null,
+                    enter = expandVertically(tween(160)) + fadeIn(tween(120)),
+                    exit = shrinkVertically(tween(120)) + fadeOut(tween(90)),
+                ) {
+                    Box(Modifier.fillMaxWidth().padding(bottom = 8.dp).offset(y = (-2).dp).testTag("workspace-image-inputs")) { inputs(compact) }
+                }
+            }
             Box(
                 Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 192.dp).fillMaxHeight().onGloballyPositioned {
                     positiveBounds = Rect(it.positionInWindow() - origin, Size(it.size.width.toFloat(), it.size.height.toFloat()))
@@ -233,7 +239,11 @@ internal fun GenerationWorkspace(
                     if (negativeCount.isNotBlank()) Text(negativeCount, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                     Icon(if (negativeExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null)
                 }
-                if (negativeExpanded) Box(Modifier.fillMaxWidth().height(72.dp).testTag("negative-prompt-editor")) { negative() }
+                AnimatedVisibility(
+                    visible = negativeExpanded,
+                    enter = expandVertically(tween(180)) + fadeIn(tween(130)),
+                    exit = shrinkVertically(tween(140)) + fadeOut(tween(100)),
+                ) { Box(Modifier.fillMaxWidth().height(72.dp).testTag("negative-prompt-editor")) { negative() } }
             }
             Column(Modifier.fillMaxWidth().testTag("parameter-panel"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Card(onClick = {
@@ -247,98 +257,109 @@ internal fun GenerationWorkspace(
                         Icon(if (showParameters) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, Modifier.padding(start = 8.dp))
                     }
                 }
-                if (showParameters) {
-                    fields.chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (row.first().id == "width" && isDit) 4.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            row.forEachIndexed { index, field ->
-                                ParameterCell(
-                                    field,
-                                    Modifier.weight(1f).then(
-                                        if (aspectLocked && ((dragPreview == "width" && field.id == "height") || (dragPreview == "height" && field.id == "width"))) {
-                                            Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), RoundedCornerShape(24.dp)).semantics { stateDescription = linkedDescription }
-                                        } else {
-                                            Modifier
-                                        },
-                                    ).onGloballyPositioned { coordinates ->
-                                        val top = coordinates.positionInWindow() - origin
-                                        anchors[field.id] = Rect(top, androidx.compose.ui.geometry.Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
-                                    }.graphicsLayer { alpha = if (active == field.id || dragPreview == field.id) 0f else 1f },
-                                    onAdjust = { ticks -> adjust(field.id, ticks) },
-                                    onDragging = {
-                                        dragging = if (it) field.id else null
-                                        if (it) {
-                                            dragPreview = field.id
-                                            dragDistance = 0f
-                                        }
-                                    },
-                                    onDistance = { dragDistance = it },
-                                ) {
-                                    focus.clearFocus()
-                                    active = field.id
-                                    closingRequested = false
-                                    editorOpen = true
-                                }
-                                if (row.first().id == "width" && index == 0 && isDit) {
-                                    val chooseRatio: (Int) -> Unit = { value ->
-                                        val next = value.coerceIn(CommonAspectRatios.indices)
-                                        if (next != ratioIndex) {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            ratioIndex = next
-                                            onAspectPresetSelected(CommonAspectRatios[next].second)
-                                        }
-                                    }
-                                    var initialRatio by remember { mutableIntStateOf(3) }
-                                    Box(
-                                        Modifier.size(36.dp).onGloballyPositioned { anchors["aspect-lock"] = Rect(it.positionInWindow() - origin, Size(it.size.width.toFloat(), it.size.height.toFloat())) }
-                                            .scrubGesture("aspect-lock", !isRunning, { onAspectLockChange(!aspectLocked) }, {
-                                                ratioIndex = CommonAspectRatios.indices.minBy { kotlin.math.abs(CommonAspectRatios[it].second - (lockedRatio ?: currentWidth.toDouble() / currentHeight)) }
-                                                initialRatio = ratioIndex
-                                                ratioPicker = true
-                                                onAspectPresetSelected(CommonAspectRatios[ratioIndex].second)
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            }, { distance -> chooseRatio(initialRatio + (distance / ratioTick).toInt()) }, { ratioPicker = false })
-                                            .testTag("aspect-ratio-lock").semantics {
-                                                role = Role.Checkbox
-                                                toggleableState = if (aspectLocked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off
-                                                if (!isRunning) {
-                                                    onClick {
-                                                        onAspectLockChange(!aspectLocked)
-                                                        true
-                                                    }
-                                                    onLongClick {
-                                                        ratioPicker = true
-                                                        true
-                                                    }
-                                                } else {
-                                                    disabled()
-                                                }
+                AnimatedVisibility(
+                    visible = showParameters,
+                    enter = expandVertically(tween(160)) + fadeIn(tween(130)),
+                    exit = shrinkVertically(tween(120)) + fadeOut(tween(90)),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        fields.chunked(2).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (row.first().id == "width" && isDit) 4.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                row.forEachIndexed { index, field ->
+                                    ParameterCell(
+                                        field,
+                                        Modifier.weight(1f).then(
+                                            if (aspectLocked && ((dragPreview == "width" && field.id == "height") || (dragPreview == "height" && field.id == "width"))) {
+                                                Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), RoundedCornerShape(24.dp)).semantics { stateDescription = linkedDescription }
+                                            } else {
+                                                Modifier
                                             },
-                                        contentAlignment = Alignment.Center,
-                                    ) { Icon(if (aspectLocked) Icons.Default.Lock else Icons.Default.LockOpen, stringResource(if (aspectLocked) R.string.ui_unlock_aspect else R.string.ui_lock_aspect), Modifier.size(20.dp)) }
+                                        ).onGloballyPositioned { coordinates ->
+                                            val top = coordinates.positionInWindow() - origin
+                                            anchors[field.id] = Rect(top, androidx.compose.ui.geometry.Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
+                                        }.graphicsLayer { alpha = if (active == field.id || dragPreview == field.id) 0f else 1f },
+                                        onAdjust = { ticks -> adjust(field.id, ticks) },
+                                        onDragging = {
+                                            dragging = if (it) field.id else null
+                                            if (it) {
+                                                dragPreview = field.id
+                                                dragDistance = 0f
+                                            }
+                                        },
+                                        onDistance = { dragDistance = it },
+                                    ) {
+                                        focus.clearFocus()
+                                        active = field.id
+                                        closingRequested = false
+                                        editorOpen = true
+                                    }
+                                    if (row.first().id == "width" && index == 0 && isDit) {
+                                        val chooseRatio: (Int) -> Unit = { value ->
+                                            val next = value.coerceIn(CommonAspectRatios.indices)
+                                            if (next != ratioIndex) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                ratioIndex = next
+                                                onAspectPresetSelected(CommonAspectRatios[next].second)
+                                            }
+                                        }
+                                        var initialRatio by remember { mutableIntStateOf(3) }
+                                        Box(
+                                            Modifier.size(36.dp).onGloballyPositioned { anchors["aspect-lock"] = Rect(it.positionInWindow() - origin, Size(it.size.width.toFloat(), it.size.height.toFloat())) }
+                                                .scrubGesture("aspect-lock", !isRunning, { onAspectLockChange(!aspectLocked) }, {
+                                                    ratioIndex = CommonAspectRatios.indices.minBy { kotlin.math.abs(CommonAspectRatios[it].second - (lockedRatio ?: currentWidth.toDouble() / currentHeight)) }
+                                                    initialRatio = ratioIndex
+                                                    ratioPicker = true
+                                                    onAspectPresetSelected(CommonAspectRatios[ratioIndex].second)
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                }, { distance -> chooseRatio(initialRatio + (distance / ratioTick).toInt()) }, {
+                                                    if (ratioPicker) {
+                                                        ratioPicker = false
+                                                        onAspectPresetFinished()
+                                                    }
+                                                })
+                                                .testTag("aspect-ratio-lock").semantics {
+                                                    role = Role.Checkbox
+                                                    toggleableState = if (aspectLocked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off
+                                                    if (!isRunning) {
+                                                        onClick {
+                                                            onAspectLockChange(!aspectLocked)
+                                                            true
+                                                        }
+                                                        onLongClick {
+                                                            ratioPicker = true
+                                                            true
+                                                        }
+                                                    } else {
+                                                        disabled()
+                                                    }
+                                                },
+                                            contentAlignment = Alignment.Center,
+                                        ) { Icon(if (aspectLocked) Icons.Default.Lock else Icons.Default.LockOpen, stringResource(if (aspectLocked) R.string.ui_unlock_aspect else R.string.ui_lock_aspect), Modifier.size(20.dp)) }
+                                    }
                                 }
+                                if (row.size == 1) Spacer(Modifier.weight(1f))
                             }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
             }
             if (status != null) Text(status, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        // One editor instance stays mounted while its edges expand from the normal slot.
-        if (positiveBounds.width > 0 && positiveBounds.height > 0) {
-            val f = promptProgress.value
-            val end = with(density) { Rect(16.dp.toPx(), 6.dp.toPx(), maxWidth.toPx() - 16.dp.toPx(), maxHeight.toPx() - 6.dp.toPx()) }
-            fun edge(a: Float, b: Float) = a + (b - a) * f
-            val left = edge(positiveBounds.left, end.left)
-            val top = edge(positiveBounds.top, end.top)
-            val width = edge(positiveBounds.width, end.width)
-            val height = edge(positiveBounds.height, end.height)
+        // The ghost slot determines layout; this one persistent editor follows
+        // its animated bounds, including IME changes and panel expansion.
+        if (positiveBounds.width > 0) {
+            val normal = positiveBounds.copy(bottom = positiveBounds.top + positiveBounds.height.coerceAtLeast(with(density) { 104.dp.toPx() }))
+            val full = with(density) { Rect(16.dp.toPx(), 6.dp.toPx(), maxWidth.toPx() - 16.dp.toPx(), (maxHeight.toPx() - 6.dp.toPx()).coerceAtLeast(7.dp.toPx())) }
+            val target = if (positiveExpanded) full else normal
+            val bounds by animateValueAsState(target, Rect.VectorConverter, spring(dampingRatio = 1f, stiffness = 700f), label = "positive-prompt-bounds")
             Box(
-                Modifier.offset { IntOffset(left.roundToInt(), top.roundToInt()) }.size(with(density) { width.toDp() }, with(density) { height.toDp() })
-                    .zIndex(if (f > 0f) 3f else 0f).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp)).testTag("positive-prompt-editor").semantics { if (positiveCount.isNotBlank()) stateDescription = positiveCount },
+                Modifier.offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
+                    .size(with(density) { bounds.width.coerceAtLeast(1f).toDp() }, with(density) { bounds.height.coerceAtLeast(1f).toDp() })
+                    .zIndex(if (positiveExpanded || bounds.height > normal.height + 1f) 3f else 0f)
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                    .testTag("positive-prompt-editor").semantics { if (positiveCount.isNotBlank()) stateDescription = positiveCount },
             ) {
                 positive()
-                if (positiveCount.isNotBlank()) Text(positiveCount, Modifier.align(Alignment.TopEnd).padding(end = 12.dp).background(MaterialTheme.colorScheme.surface), style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 IconButton(onClick = {
                     negativeExpanded = false
                     if (positiveExpanded) collapsePrompt() else positiveExpanded = true
@@ -436,6 +457,7 @@ internal fun GenerationWorkspace(
                     ratioIndex = index
                     onAspectPresetSelected(CommonAspectRatios[index].second)
                     ratioPicker = false
+                    onAspectPresetFinished()
                 }
             }
         }
@@ -458,7 +480,7 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
         previousTicks = 0
     }, { distance ->
         onDistance(distance)
-        val ticks = (distance / tickPixels).toInt()
+        val ticks = -(distance / tickPixels).toInt()
         if (ticks != previousTicks) {
             adjustFromStart(ticks)
             previousTicks = ticks

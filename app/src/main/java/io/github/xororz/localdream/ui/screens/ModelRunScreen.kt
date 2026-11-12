@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.BitmapRegionDecoder
 import android.graphics.ImageDecoder
 import android.graphics.Rect as AndroidRect
 import android.net.Uri
@@ -22,12 +21,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -158,6 +160,7 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -212,7 +215,6 @@ fun ModelRunScreen(
     val msgDeletedCountWithFailed = stringResource(R.string.deleted_count_with_failed)
     val msgUnknownError = stringResource(R.string.unknown_error)
     val msgSaveFailed = stringResource(R.string.save_failed_detail)
-    val msgImg2imgFailed = stringResource(R.string.img2img_failed_detail)
     val msgReportSuccess = stringResource(R.string.report_success)
     val msgReportFailed = stringResource(R.string.report_failed)
     val msgNoImageAvailable = stringResource(R.string.no_image_available)
@@ -494,6 +496,12 @@ fun ModelRunScreen(
 
     var showCropScreen by remember { mutableStateOf(false) }
     var imageUriForCrop by remember { mutableStateOf<Uri?>(null) }
+    LaunchedEffect(showCropScreen) {
+        if (!showCropScreen) {
+            delay(180)
+            imageUriForCrop = null
+        }
+    }
     var croppedBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     var showInpaintScreen by remember { mutableStateOf(false) }
@@ -501,6 +509,14 @@ fun ModelRunScreen(
     var isInpaintMode by remember { mutableStateOf(false) }
     var savedPathHistory by remember { mutableStateOf<List<PathData>?>(null) }
     var cropRect by remember { mutableStateOf<AndroidRect?>(null) }
+    var baseImageSourceUri by remember { mutableStateOf<Uri?>(null) }
+    var baseSourceWidth by remember { mutableIntStateOf(0) }
+    var baseSourceHeight by remember { mutableIntStateOf(0) }
+    var baseCropAnchor by remember { mutableStateOf<AndroidRect?>(null) }
+    var baseCropRevision by remember { mutableIntStateOf(0) }
+    var cropSourceIsGallery by remember { mutableStateOf(true) }
+    val ownedBaseSources = remember { mutableListOf<File>() }
+    DisposableEffect(Unit) { onDispose { ownedBaseSources.forEach { it.delete() } } }
 
     var showDrawScreen by remember { mutableStateOf(false) }
     // Transparent edits are also retained for full-image inpaint exports.
@@ -592,6 +608,8 @@ fun ModelRunScreen(
         maskBitmap = null
         isInpaintMode = false
         cropRect = null
+        baseImageSourceUri = null
+        baseCropAnchor = null
         savedPathHistory = null
         base64EncodeDone = false
         hasOriginalImageForStitch = false
@@ -617,6 +635,55 @@ fun ModelRunScreen(
                 aspectRatio = aspectRatio,
             )
         }
+    }
+
+    fun applyCanvasResolution(width: Int, height: Int) {
+        val changed = width != currentWidth || height != currentHeight
+        currentWidth = width
+        currentHeight = height
+        if (model?.usesFixedCanvas != true) aspectRatio = inferAspectRatioString(width, height)
+        saveAllFields()
+        if (!changed || model?.isDit == true || model?.runOnCpu == true || model?.usesFixedCanvas == true) return
+        isCheckingBackend = true
+        backendReady = false
+        if (isRemote) {
+            scope.launch {
+                if (remoteClient?.selectModel(modelId, width, height) != true) {
+                    isCheckingBackend = false
+                    errorMessage = msgRemoteSelectFailed
+                }
+            }
+        } else {
+            model?.let { selected ->
+                context.startForegroundService(
+                    Intent(context, BackendService::class.java).apply {
+                        action = BackendService.ACTION_RESTART
+                        putExtra("modelId", modelId)
+                        putExtra("backendType", selected.backendType)
+                        putExtra("width", width)
+                        putExtra("height", height)
+                    },
+                )
+            }
+        }
+        backendRestartTrigger++
+    }
+
+    fun cropOutputPolicy() = CropOutputPolicy.forModel(
+        model?.isDit == true,
+        model?.runOnCpu == true,
+        model?.usesFixedCanvas == true,
+        availableResolutions,
+        effectiveWidth,
+        effectiveHeight,
+    )
+
+    fun editBaseCrop() {
+        if (isRunning) return
+        val source = baseImageSourceUri ?: return
+        imageUriForCrop = source
+        cropSourceIsGallery = hasOriginalImageForStitch
+        showCropScreen = true
     }
 
     fun saveUltrafixParams() {
@@ -709,121 +776,38 @@ fun ModelRunScreen(
     }
 
     fun processSelectedImage(uri: Uri) {
+        cropSourceIsGallery = true
         imageUriForCrop = uri
         showCropScreen = true
     }
 
-    @Suppress("UnusedParameter") // base64String from cropify callback is re-derived later
-    fun handleCropComplete(base64String: String, bitmap: Bitmap, rect: AndroidRect) {
-        showCropScreen = false
-        val sourceUri = imageUriForCrop
-        selectedImageUri = sourceUri
-        imageUriForCrop = null
-        hasOriginalImageForStitch = true
-
-        // CropImageScreen returns the cropped bitmap via cropify, whose output
-        // can carry a sub-pixel offset relative to the cropRect we computed
-        // from frameRect / imageRect. That's invisible when the patch is later
-        // pasted back as a whole (SD1.5 / SDXL 1:1), but in SDXL aspect-pad
-        // mode the patch goes through scale → pad → backend center-crop →
-        // scale-back, and the per-step rounding leaks the offset as a
-        // few-pixel stitch misalignment.
-        //
-        // Fix: re-crop directly from the original image using BitmapRegionDecoder
-        // so the bitmap content is *strictly* the cropRect region in the
-        // original's coordinate space. cropRect is also clamped to the original
-        // bounds, and the clamped value is saved so stitch later paints to the
-        // exact same pixel range we cropped from.
-        scope.launch(Dispatchers.IO) {
-            try {
-                base64EncodeDone = false
-                val aspectTarget =
-                    computeAspectTargetSize(model?.usesFixedCanvas == true, aspectRatio)
-                val targetW = aspectTarget?.first ?: currentWidth
-                val targetH = aspectTarget?.second ?: currentHeight
-
-                var clampedRect = rect
-                val freshCropped: Bitmap? = try {
-                    sourceUri?.let { uri ->
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            @Suppress("DEPRECATION")
-                            val decoder = BitmapRegionDecoder.newInstance(input, false)
-                                ?: throw IllegalStateException(
-                                    "BitmapRegionDecoder.newInstance returned null",
-                                )
-                            try {
-                                val safeLeft = rect.left.coerceAtLeast(0)
-                                val safeTop = rect.top.coerceAtLeast(0)
-                                val safeRight = rect.right.coerceAtMost(decoder.width)
-                                val safeBottom = rect.bottom.coerceAtMost(decoder.height)
-                                if (safeRight > safeLeft && safeBottom > safeTop) {
-                                    val region = snapInpaintCropRect(
-                                        rect = AndroidRect(safeLeft, safeTop, safeRight, safeBottom),
-                                        imageWidth = decoder.width,
-                                        imageHeight = decoder.height,
-                                        tolerance = (2f * context.resources.displayMetrics.density)
-                                            .roundToInt().coerceAtLeast(1),
-                                    )
-                                    clampedRect = region
-                                    decoder.decodeRegion(region, BitmapFactory.Options())
-                                } else {
-                                    null
-                                }
-                            } finally {
-                                decoder.recycle()
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.w(
-                        "ModelRunScreen",
-                        "BitmapRegionDecoder failed, fall back to cropify bitmap: ${e.message}",
-                    )
-                    null
-                }
-
-                val sourceBitmap = freshCropped ?: bitmap
-
-                val scaled = withContext(Dispatchers.Default) {
-                    if (sourceBitmap.width != targetW || sourceBitmap.height != targetH) {
-                        sourceBitmap.scale(targetW, targetH)
-                    } else {
-                        sourceBitmap
-                    }
-                }
-
-                val needsPad =
-                    scaled.width != currentWidth || scaled.height != currentHeight
-                val payload = if (needsPad) {
-                    bitmapToBase64Png(padBitmapToCanvas(scaled, currentWidth, currentHeight))
-                } else {
-                    bitmapToBase64Png(scaled)
-                }
-
-                withContext(Dispatchers.Main) {
-                    cropRect = clampedRect
-                    croppedBitmap = scaled
-                    drawingOverlayBitmap = null
-                }
-
-                val tmpFile = File(context.filesDir, "tmp.txt")
-                tmpFile.writeText(payload)
-                base64EncodeDone = true
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        msgSaveFailed.format(e.message ?: msgUnknownError),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                    selectedImageUri = null
-                    croppedBitmap = null
-                    drawingOverlayBitmap = null
-                    cropRect = null
-                    hasOriginalImageForStitch = false
-                }
-            }
+    fun handleCropComplete(selection: CropSelection) {
+        val sameSource = selection.uri == baseImageSourceUri
+        if (!sameSource) {
+            croppedBitmap = null
+            drawingOverlayBitmap = null
+            maskBitmap = null
+            isInpaintMode = false
+            savedPathHistory = null
+            cropRect = null
         }
+        base64EncodeDone = false
+        baseImageSourceUri = selection.uri
+        baseSourceWidth = selection.sourceWidth
+        baseSourceHeight = selection.sourceHeight
+        baseCropAnchor = AndroidRect(selection.rect)
+        baseCropRevision++
+        selectedImageUri = selection.uri
+        hasOriginalImageForStitch = cropSourceIsGallery
+        aspectLocked = true
+        lockedAspect = selection.output.ratio
+        if (model?.usesFixedCanvas == true) {
+            aspectRatio = inferAspectRatioString(selection.output.width, selection.output.height)
+            saveAllFields()
+        } else {
+            applyCanvasResolution(selection.output.width, selection.output.height)
+        }
+        showCropScreen = false
     }
 
     fun handleInpaintComplete(maskBase64: String, maskBmp: Bitmap, pathHistory: List<PathData>) {
@@ -867,92 +851,28 @@ fun ModelRunScreen(
 
     fun sendBitmapToImg2img(bitmap: Bitmap) {
         scope.launch {
-            val ready = try {
-                base64EncodeDone = false
-                val aspectTarget = computeAspectTargetSize(model?.usesFixedCanvas == true, aspectRatio)
-                val targetW = aspectTarget?.first ?: currentWidth
-                val targetH = aspectTarget?.second ?: currentHeight
-
-                // 1) Center-crop+scale the source to (targetW, targetH).
-                // 2) If aspect padding is in effect, pad up to (currentWidth, currentHeight).
-                val resized = withContext(Dispatchers.Default) {
-                    val srcRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
-                    val dstRatio = targetW.toFloat() / targetH.toFloat()
-                    val centerCropped = if (kotlin.math.abs(srcRatio - dstRatio) < 1e-3f) {
-                        bitmap
-                    } else {
-                        val (cropW, cropH) = if (srcRatio > dstRatio) {
-                            Pair((bitmap.height * dstRatio).toInt(), bitmap.height)
-                        } else {
-                            Pair(bitmap.width, (bitmap.width / dstRatio).toInt())
-                        }
-                        val cx = (bitmap.width - cropW) / 2
-                        val cy = (bitmap.height - cropH) / 2
-                        Bitmap.createBitmap(bitmap, cx, cy, cropW, cropH)
+            base64EncodeDone = false
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    File.createTempFile("workspace-base-", ".png", context.cacheDir).also { output ->
+                        output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                     }
-                    val scaled =
-                        if (centerCropped.width != targetW || centerCropped.height != targetH) {
-                            centerCropped.scale(targetW, targetH)
-                        } else {
-                            centerCropped.copy(Bitmap.Config.ARGB_8888, false)
-                        }
-                    scaled
                 }
-
-                val displayBitmap = resized
-                val uploadBitmap =
-                    if (resized.width != currentWidth || resized.height != currentHeight) {
-                        padBitmapToCanvas(resized, currentWidth, currentHeight)
-                    } else {
-                        resized
-                    }
-
-                val base64String = withContext(Dispatchers.IO) {
-                    bitmapToBase64Png(uploadBitmap)
-                }
-
-                withContext(Dispatchers.IO) {
-                    File(context.filesDir, "tmp.txt").writeText(base64String)
-                }
-
-                croppedBitmap = displayBitmap
-                drawingOverlayBitmap = null
-                cropRect = AndroidRect(0, 0, displayBitmap.width, displayBitmap.height)
-                selectedImageUri = Uri.fromFile(File(context.filesDir, "tmp.txt"))
-                hasOriginalImageForStitch = false
-                base64EncodeDone = true
-                true
+                ownedBaseSources.add(file)
+                cropSourceIsGallery = false
+                val output = CropOutputSize(effectiveWidth, effectiveHeight)
+                val rect = fitImageCrop(AndroidRect(0, 0, bitmap.width, bitmap.height), bitmap.width, bitmap.height, output.ratio)
+                handleCropComplete(CropSelection(Uri.fromFile(file), bitmap.width, bitmap.height, rect, output))
+                pagerState.animateScrollToPage(0)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Toast.makeText(
-                    context,
-                    msgImg2imgFailed.format(e.message ?: msgUnknownError),
-                    Toast.LENGTH_SHORT,
-                ).show()
-                base64EncodeDone = false
-                selectedImageUri = null
-                croppedBitmap = null
-                drawingOverlayBitmap = null
-                cropRect = null
-                hasOriginalImageForStitch = false
-                false
-            }
-
-            if (ready) {
-                try {
-                    pagerState.animateScrollToPage(0)
-                } catch (_: kotlinx.coroutines.CancellationException) {
-                    // Animation interrupted by another scroll — img2img data is already set, ignore
-                }
+                Toast.makeText(context, msgSaveFailed.format(e.message ?: msgUnknownError), Toast.LENGTH_SHORT).show()
+                base64EncodeDone = selectedImageUri == null
             }
         }
     }
 
-    // Runs tiled img2img ("ultrafix") over the currently displayed (upscaled)
-    // bitmap at its full resolution, using the prompt-page parameters. The
-    // base image goes through its own file so a pending img2img selection in
-    // tmp.txt is left untouched.
     fun startUltrafix() {
         val bmp = currentBitmap ?: return
         val tileSize = maxOf(currentWidth, currentHeight)
@@ -1100,20 +1020,70 @@ fun ModelRunScreen(
         maskBitmap = null
         isInpaintMode = false
         cropRect = null
+        baseImageSourceUri = null
+        baseCropAnchor = null
         savedPathHistory = null
         base64EncodeDone = false
         hasOriginalImageForStitch = false
     }
 
-    // A DiT base image is cropped to the exact output size, so any size change
-    // (sliders, imported params, restored preferences) invalidates it and its
-    // mask; the user has to crop again. References have no size tie and stay.
-    LaunchedEffect(currentWidth, currentHeight) {
-        val base = croppedBitmap
-        if (model?.isDit == true && base != null &&
-            (base.width != currentWidth || base.height != currentHeight)
-        ) {
-            clearBaseImageState()
+    // Retain the user's original crop anchor. Automatic adjustments always start
+    // there, so changing sizes back and forth never accumulates crop drift.
+    LaunchedEffect(baseImageSourceUri, baseCropAnchor, baseCropRevision, currentWidth, currentHeight, aspectRatio) {
+        val uri = baseImageSourceUri ?: return@LaunchedEffect
+        val anchor = baseCropAnchor?.let(::AndroidRect) ?: return@LaunchedEffect
+        if (baseSourceWidth <= 0 || baseSourceHeight <= 0) return@LaunchedEffect
+        base64EncodeDone = false
+        val target = CropOutputSize(effectiveWidth, effectiveHeight)
+        val revision = baseCropRevision
+        val sourceWidth = baseSourceWidth
+        val sourceHeight = baseSourceHeight
+        val canvasWidth = currentWidth
+        val canvasHeight = currentHeight
+        val region = fitImageCrop(anchor, baseSourceWidth, baseSourceHeight, target.ratio)
+        val oldRegion = cropRect?.let(::AndroidRect)
+        val oldDrawing = drawingOverlayBitmap
+        val oldMask = maskBitmap
+        val token = java.util.UUID.randomUUID().toString()
+        val imageFile = File(context.filesDir, "tmp-pending-$token.txt")
+        val maskFile = File(context.filesDir, "mask-pending-$token.txt")
+        try {
+            delay(90)
+            val prepared = withContext(Dispatchers.IO) {
+                val decoded = decodeImageCrop(context, CropSelection(uri, sourceWidth, sourceHeight, region, target))
+                val drawing = remapCropLayer(oldDrawing, oldRegion, region, target.width, target.height)
+                val mask = remapCropLayer(oldMask, oldRegion, region, target.width, target.height, mask = true)
+                val display = if (drawing != null) {
+                    decoded.copy(Bitmap.Config.ARGB_8888, true).also {
+                        android.graphics.Canvas(it).drawBitmap(drawing, 0f, 0f, null)
+                    }
+                } else {
+                    decoded
+                }
+                imageFile.writeText(bitmapToBase64Png(padBitmapToCanvas(display, canvasWidth, canvasHeight)))
+                if (mask != null) maskFile.writeText(bitmapToBase64Png(padBitmapToCanvas(mask, canvasWidth, canvasHeight)))
+                Triple(display, drawing, mask)
+            }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val sourceChanged = baseImageSourceUri != uri || baseCropRevision != revision
+            val canvasChanged = currentWidth != canvasWidth || currentHeight != canvasHeight
+            val outputChanged = effectiveWidth != target.width || effectiveHeight != target.height
+            if (sourceChanged || canvasChanged || outputChanged) return@LaunchedEffect
+            check(imageFile.renameTo(File(context.filesDir, "tmp.txt"))) { "Cannot commit image payload" }
+            if (maskFile.exists()) check(maskFile.renameTo(File(context.filesDir, "mask.txt"))) { "Cannot commit mask payload" }
+            cropRect = region
+            croppedBitmap = prepared.first
+            drawingOverlayBitmap = prepared.second
+            maskBitmap = prepared.third
+            if (oldRegion != region || oldMask?.width != target.width || oldMask?.height != target.height) savedPathHistory = null
+            base64EncodeDone = true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Toast.makeText(context, msgSaveFailed.format(e.message ?: msgUnknownError), Toast.LENGTH_SHORT).show()
+        } finally {
+            imageFile.delete()
+            maskFile.delete()
         }
     }
 
@@ -1234,9 +1204,9 @@ fun ModelRunScreen(
             if (shouldStitch) {
                 withContext(Dispatchers.IO) {
                     try {
-                        val originalBitmap =
-                            context.contentResolver.openInputStream(snapshotSelectedImageUri!!)!!
-                                .use { BitmapFactory.decodeStream(it) }
+                        val originalBitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, snapshotSelectedImageUri!!)) { decoder, _, _ ->
+                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        }
 
                         val mutableOriginal =
                             originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
@@ -1707,7 +1677,6 @@ fun ModelRunScreen(
             onConfirm = { newRatio ->
                 if (newRatio != aspectRatio) {
                     aspectRatio = newRatio
-                    clearImg2imgState()
                     saveAllFields()
                 }
                 showCustomAspectRatioDialog = false
@@ -1721,69 +1690,7 @@ fun ModelRunScreen(
             title = stringResource(R.string.switch_resolution),
             text = stringResource(R.string.switch_resolution_hint),
             onConfirm = {
-                pendingResolution?.let { resolution ->
-                    // Check aspect ratio change
-                    val oldRatio =
-                        if (currentHeight > 0) currentWidth.toFloat() / currentHeight.toFloat() else 1f
-                    val newRatio =
-                        if (resolution.height >
-                            0
-                        ) {
-                            resolution.width.toFloat() / resolution.height.toFloat()
-                        } else {
-                            1f
-                        }
-
-                    if (kotlin.math.abs(oldRatio - newRatio) > 0.01f) {
-                        clearImg2imgState()
-                    }
-
-                    currentWidth = resolution.width
-                    currentHeight = resolution.height
-                    scope.launch {
-                        generationPreferences.saveResolution(
-                            modelId,
-                            resolution.width,
-                            resolution.height,
-                        )
-                    }
-                    if (isRemote) {
-                        // The host's BackendService reconciles the new
-                        // resolution into a restart on its own. The health
-                        // check only passes once the host reports the new
-                        // resolution, so triggering it alongside the in-flight
-                        // select is safe.
-                        isCheckingBackend = true
-                        backendReady = false
-                        scope.launch {
-                            val ok = remoteClient?.selectModel(
-                                modelId,
-                                resolution.width,
-                                resolution.height,
-                            ) ?: false
-                            if (!ok) {
-                                isCheckingBackend = false
-                                errorMessage = msgRemoteSelectFailed
-                            }
-                        }
-                        backendRestartTrigger++
-                    } else {
-                        model?.let { m ->
-                            val serviceIntent =
-                                Intent(context, BackendService::class.java).apply {
-                                    action = BackendService.ACTION_RESTART
-                                    putExtra("modelId", modelId)
-                                    putExtra("backendType", m.backendType)
-                                    putExtra("width", resolution.width)
-                                    putExtra("height", resolution.height)
-                                }
-                            context.startForegroundService(serviceIntent)
-                            isCheckingBackend = true
-                            backendReady = false
-                            backendRestartTrigger++
-                        }
-                    }
-                }
+                pendingResolution?.let { resolution -> applyCanvasResolution(resolution.width, resolution.height) }
                 showResolutionChangeDialog = false
                 pendingResolution = null
             },
@@ -2133,12 +2040,12 @@ fun ModelRunScreen(
                 onReference = if (supportsReferenceEditing) ({ onAddEditReferencesClick() }) else null,
                 baseEnabled = !isRunning,
                 referenceEnabled = !isRunning && !editReferencesLoading,
-                onDraw = if (selectedImageUri != null && croppedBitmap != null) ({ showDrawScreen = true }) else null,
-                onMask = if (selectedImageUri != null && croppedBitmap != null) ({ showInpaintScreen = true }) else null,
+                onDraw = if (selectedImageUri != null && croppedBitmap != null && base64EncodeDone) ({ showDrawScreen = true }) else null,
+                onMask = if (selectedImageUri != null && croppedBitmap != null && base64EncodeDone) ({ showInpaintScreen = true }) else null,
             )
             AnimatedVisibility(
                 visible = !compact && !io.github.xororz.localdream.ui.design.keyboardIsVisible() && (
-                    (selectedImageUri != null && base64EncodeDone) ||
+                    selectedImageUri != null ||
                         editReferenceImages.isNotEmpty() || editReferencesLoading
                     ),
                 enter = expandVertically() + fadeIn(),
@@ -2161,7 +2068,7 @@ fun ModelRunScreen(
                                     PreviewableInputCard(
                                         bitmap = croppedBitmap,
                                         label = stringResource(R.string.ui_view_base),
-                                        onPreview = { inputPreview = it },
+                                        onPreview = { editBaseCrop() },
                                         modifier = Modifier.size(64.dp).testTag("base-image-thumbnail"),
                                     ) {
                                         Box {
@@ -2353,14 +2260,12 @@ fun ModelRunScreen(
             aspectLocked = aspectLocked,
             lockedRatio = if (aspectLocked) lockedAspect else null,
             onAspectPresetSelected = { ratio ->
+                val output = cropOutputPolicy().choose(ratio, exact = true)
                 lockedAspect = ratio
                 aspectLocked = true
-                val (width, height) = DitResolution.lockedSize(currentWidth.toFloat(), ratio, true)
-                currentWidth = width
-                currentHeight = height
-                aspectRatio = inferAspectRatioString(width, height)
-                saveAllFields()
+                applyCanvasResolution(output.width, output.height)
             },
+            onAspectPresetFinished = { if (baseImageSourceUri != null) editBaseCrop() },
             onAspectLockChange = { locked ->
                 lockedAspect = currentWidth.toDouble() / currentHeight
                 aspectLocked = locked
@@ -2383,7 +2288,6 @@ fun ModelRunScreen(
             onAspectRatioSelected = { ratio ->
                 if (!isRunning && aspectRatio != ratio) {
                     aspectRatio = ratio
-                    clearImg2imgState()
                     saveAllFields()
                 }
             },
@@ -2424,21 +2328,21 @@ fun ModelRunScreen(
             },
 
             positive = {
-                ControlledPromptTagTextField(controller = promptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, labelInOutline = true, bottomInset = 36.dp, label = {
+                ControlledPromptTagTextField(controller = promptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, labelInOutline = true, outlineCounter = if (promptField.text.isNotEmpty()) promptField.countLabel else "", bottomInset = 36.dp, label = {
                     Text(stringResource(R.string.ui_positive_short), style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 })
             },
             negative = {
                 ControlledPromptTagTextField(controller = negativePromptField, autocompleteAvailable = tagAutocompleteAvailable, modifier = Modifier.fillMaxWidth(), fixedViewport = true, label = {
-                    if (negativePromptField.text.isNotEmpty()) Text("${negativePromptField.tokenCount}/${negativePromptField.tokenMax}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    if (negativePromptField.text.isNotEmpty()) Text(negativePromptField.countLabel, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 })
             },
             inputs = if (useImg2img) ({ compact -> ImageInputs(compact) }) else null,
             status = errorMessage,
             promptFocused = promptField.isFocused || negativePromptField.isFocused,
             positiveFocused = promptField.isFocused,
-            positiveCount = if (promptField.text.isNotEmpty()) "${promptField.tokenCount}/${promptField.tokenMax}" else "",
-            negativeCount = if (negativePromptField.text.isNotEmpty()) "${negativePromptField.tokenCount}/${negativePromptField.tokenMax}" else "",
+            positiveCount = if (promptField.text.isNotEmpty()) promptField.countLabel else "",
+            negativeCount = if (negativePromptField.text.isNotEmpty()) negativePromptField.countLabel else "",
         )
     }
 
@@ -2681,24 +2585,22 @@ fun ModelRunScreen(
                 }
             }
         }
-        if (showCropScreen && imageUriForCrop != null) {
-            val aspectTarget = computeAspectTargetSize(model?.usesFixedCanvas == true, aspectRatio)
-            val cropW = aspectTarget?.first ?: currentWidth
-            val cropH = aspectTarget?.second ?: currentHeight
-            CropImageScreen(
-                imageUri = imageUriForCrop!!,
-                width = cropW,
-                height = cropH,
-                onCropComplete = { base64String, bitmap, rect ->
-                    handleCropComplete(base64String, bitmap, rect)
-                },
-                onCancel = {
-                    showCropScreen = false
-                    imageUriForCrop = null
-                    selectedImageUri = null
-                    hasOriginalImageForStitch = false
-                },
-            )
+        AnimatedVisibility(
+            visible = showCropScreen && imageUriForCrop != null,
+            enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 12 },
+            exit = fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 16 },
+        ) {
+            imageUriForCrop?.let { cropUri ->
+                CropImageScreen(
+                    imageUri = cropUri,
+                    policy = cropOutputPolicy(),
+                    initialCrop = if (imageUriForCrop == baseImageSourceUri) cropRect ?: baseCropAnchor else null,
+                    onCropComplete = ::handleCropComplete,
+                    onCancel = {
+                        showCropScreen = false
+                    },
+                )
+            }
         }
         if (showInpaintScreen && croppedBitmap != null) {
             InpaintScreen(
@@ -3372,7 +3274,6 @@ fun ModelRunScreen(
                     val newRatio = inferAspectRatioString(params.width, params.height)
                     if (newRatio != aspectRatio) {
                         aspectRatio = newRatio
-                        clearImg2imgState()
                     }
                 }
                 saveAllFields()
