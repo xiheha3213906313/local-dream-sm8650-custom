@@ -336,11 +336,13 @@ internal fun GenerationWorkspace(
                         fields.chunked(2).forEach { row ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (row.first().id == "width" && isDit) 4.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 row.forEachIndexed { index, field ->
+                                    val linked = aspectLocked && ((dragging == "width" && field.id == "height") || (dragging == "height" && field.id == "width"))
+                                    val linkedAlpha by animateFloatAsState(if (linked) 1f else 0f, tween(160), label = "linked-outline-${field.id}")
                                     ParameterCell(
                                         field,
-                                        Modifier.weight(1f).then(
-                                            if (aspectLocked && ((dragPreview == "width" && field.id == "height") || (dragPreview == "height" && field.id == "width"))) {
-                                                Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), RoundedCornerShape(24.dp)).semantics { stateDescription = linkedDescription }
+                                        Modifier.weight(1f).border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = linkedAlpha)), RoundedCornerShape(24.dp)).then(
+                                            if (linked) {
+                                                Modifier.semantics { stateDescription = linkedDescription }
                                             } else {
                                                 Modifier
                                             },
@@ -431,13 +433,13 @@ internal fun GenerationWorkspace(
             ) {
                 when (active) {
                     "width" -> if (isDit || runOnCpu) {
-                        NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit, onResolutionAdjusting)
+                        NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit, commitOnDone = true)
                     } else {
                         ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
                     }
 
                     "height" -> if (isDit) {
-                        NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit, onResolutionAdjusting)
+                        NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit, commitOnDone = true)
                     } else {
                         ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
                     }
@@ -561,30 +563,36 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
 }
 
 @Composable
-private fun NumberEditor(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int, integer: Boolean, onChange: (Float) -> Unit, onDone: () -> Unit, onAdjusting: (Boolean) -> Unit = {}) {
+private fun NumberEditor(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int, integer: Boolean, onChange: (Float) -> Unit, onDone: () -> Unit, commitOnDone: Boolean = false) {
     var entry by rememberSaveable(label) { mutableStateOf(if (integer) value.roundToInt().toString() else "%.2f".format(java.util.Locale.ROOT, value)) }
+    var draft by rememberSaveable(label) { mutableFloatStateOf(value) }
+    val displayedValue = if (commitOnDone) draft else value
+    fun update(next: Float) {
+        if (commitOnDone) draft = next else onChange(next)
+    }
+    fun confirm() {
+        if (commitOnDone) onChange(draft)
+        onDone()
+    }
     val haptic = LocalHapticFeedback.current
     fun tick(next: Float) = ((next.coerceIn(range) - range.start) / (range.endInclusive - range.start) * (steps + 1)).roundToInt()
-    var lastTick by remember(label) { mutableIntStateOf(tick(value)) }
-    val adjusting by rememberUpdatedState(onAdjusting)
-    DisposableEffect(Unit) { onDispose { adjusting(false) } }
-    LaunchedEffect(value) { lastTick = tick(value) }
+    var lastTick by remember(label) { mutableIntStateOf(tick(displayedValue)) }
+    LaunchedEffect(displayedValue) { lastTick = tick(displayedValue) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ParameterNumberInput(label, entry, { next ->
             entry = next
-            next.toFloatOrNull()?.takeIf { it.isFinite() }?.let { onChange(it.coerceIn(range)) }
-        }, integer, onDone)
-        Slider(value.coerceIn(range), { next ->
-            adjusting(true)
+            next.toFloatOrNull()?.takeIf { it.isFinite() }?.let { update(it.coerceIn(range)) }
+        }, integer, ::confirm)
+        Slider(displayedValue.coerceIn(range), { next ->
             val nextTick = tick(next)
             if (nextTick != lastTick) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 lastTick = nextTick
             }
             entry = if (integer) next.roundToInt().toString() else "%.2f".format(java.util.Locale.ROOT, next)
-            onChange(next)
-        }, valueRange = range, steps = steps, onValueChangeFinished = { adjusting(false) })
-        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.confirm)) }
+            update(next)
+        }, valueRange = range, steps = steps)
+        Button(onClick = ::confirm, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.confirm)) }
     }
 }
 

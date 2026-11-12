@@ -52,6 +52,7 @@ internal fun CropImageScreen(
     var preview by remember(imageUri) { mutableStateOf<CropPreview?>(null) }
     var error by remember(imageUri) { mutableStateOf<String?>(null) }
     var ratio by remember(imageUri) { mutableStateOf<Double?>(policy.current.ratio) }
+    var fullSelected by remember(imageUri) { mutableStateOf(false) }
     var selection by remember(imageUri) { mutableStateOf<Rect?>(null) }
     val msgError = stringResource(R.string.error_with_detail)
     LaunchedEffect(imageUri) {
@@ -71,13 +72,21 @@ internal fun CropImageScreen(
     val frameRatio = if (frame.height > 0) frame.width.toDouble() / frame.height else policy.current.ratio
     val output = remember(policy, ratio, if (ratio == null) frameRatio else 0.0) { policy.choose(ratio ?: frameRatio, exact = ratio != null) }
     fun chooseRatio(value: Double?) {
-        if (ratio == value) return
+        if (ratio == value && !fullSelected) return
+        fullSelected = false
         // Free mode only unlocks the existing frame; it never creates a second frame.
         if (value != null && source != null && selection != null) {
             val size = policy.choose(value, exact = true)
             selection = fitImageCrop(frame.pixelRect(), source.sourceWidth, source.sourceHeight, size.ratio).frameRect()
         }
         ratio = value
+    }
+    fun chooseFull() {
+        val loaded = source ?: return
+        val size = policy.choose(loaded.sourceWidth.toDouble() / loaded.sourceHeight, exact = true)
+        selection = fitImageCrop(AndroidRect(0, 0, loaded.sourceWidth, loaded.sourceHeight), loaded.sourceWidth, loaded.sourceHeight, size.ratio).frameRect()
+        ratio = size.ratio
+        fullSelected = true
     }
     BackHandler(onBack = onCancel)
     Scaffold(
@@ -100,9 +109,10 @@ internal fun CropImageScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { ChoiceControl(stringResource(R.string.ui_crop_full), ::chooseFull, checked = fullSelected, enabled = source != null, height = 36.dp) }
                     item { ChoiceControl(stringResource(R.string.ui_crop_free), { chooseRatio(null) }, checked = ratio == null, enabled = source != null, height = 36.dp) }
                     items(CommonAspectRatios) { (label, value) ->
-                        ChoiceControl(label, { chooseRatio(value) }, checked = ratio?.let { abs(ln(it / value)) < .001 } == true, enabled = source != null && policy.supports(value), height = 36.dp)
+                        ChoiceControl(label, { chooseRatio(value) }, checked = !fullSelected && ratio?.let { abs(ln(it / value)) < .001 } == true, enabled = source != null && policy.supports(value), height = 36.dp)
                     }
                 }
                 Text("${output.width} × ${output.height}", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -113,7 +123,12 @@ internal fun CropImageScreen(
                         preview = source,
                         frame = frame,
                         fixedRatio = ratio != null,
-                        onFrameChange = { selection = it },
+                        onFrameChange = {
+                            if (selection != it) {
+                                fullSelected = false
+                                selection = it
+                            }
+                        },
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 36.dp),
                     )
                 } else if (error == null) {
