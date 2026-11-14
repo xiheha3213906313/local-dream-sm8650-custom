@@ -89,6 +89,9 @@ fun GenerationParamsDialog(
                         stringResource(R.string.basic_size, params.width, params.height),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    params.loras.forEach { lora ->
+                        Text("LoRA · ${lora.name} · ${lora.weight}", style = MaterialTheme.typography.bodyMedium)
+                    }
                     params.seed?.let {
                         Text(
                             stringResource(R.string.basic_seed, it),

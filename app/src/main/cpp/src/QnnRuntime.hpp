@@ -14,6 +14,9 @@
 #include "MemUtils.hpp"
 #include "PAL/DynamicLoading.hpp"
 #include "QnnModel.hpp"
+#ifdef LOCAL_DREAM_LORA
+#include "LoraQnn.hpp"
+#endif
 #include "QnnSampleAppUtils.hpp"
 #include "zstd.h"
 
@@ -110,6 +113,9 @@ inline int initializeApp(const std::string &modelName,
       return app->reportError(modelName + " Create From Binary failure");
   }
 
+#ifdef LOCAL_DREAM_LORA
+  lora::applyQnn(app->loraInterface(),app->loraContext(),app->loraBinary());
+#endif
   if (StatusCode::SUCCESS != app->enablePerformaceMode())
     return app->reportError(modelName + " Enable Performance Mode failure");
 

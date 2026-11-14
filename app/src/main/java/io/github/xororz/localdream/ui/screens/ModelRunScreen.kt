@@ -117,6 +117,8 @@ import io.github.xororz.localdream.data.GenerationPreferences
 import io.github.xororz.localdream.data.HistoryFilter
 import io.github.xororz.localdream.data.HistoryItem
 import io.github.xororz.localdream.data.HistoryManager
+import io.github.xororz.localdream.data.LoraRepository
+import io.github.xororz.localdream.data.LoraRuntime
 import io.github.xororz.localdream.data.ModelRepository
 import io.github.xororz.localdream.data.ModelStorage
 import io.github.xororz.localdream.data.PatchScanner
@@ -186,6 +188,16 @@ fun ModelRunScreen(
     val serviceState by BackgroundGenerationService.generationState.collectAsState()
     val backendState by BackendService.backendState.collectAsState()
     val context = LocalContext.current
+    val loraRepository = remember { LoraRepository.get(context) }
+    var loraSelections by remember(modelId) { mutableStateOf(loraRepository.selections(modelId)) }
+    var showLoraSettings by remember { mutableStateOf(false) }
+    DisposableEffect(modelId) { onDispose { if (!isRemote) loraRepository.persistOnExit(modelId, loraSelections) } }
+    LaunchedEffect(loraSelections) {
+        if (!isRemote) {
+            delay(250)
+            loraRepository.save(modelId, loraSelections)
+        }
+    }
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val generationPreferences = remember { GenerationPreferences(context) }
@@ -885,6 +897,7 @@ fun ModelRunScreen(
         // tags instead of the prompt-page prompt; off uses the box prompt.
         val ultrafixPrompt =
             if (ultrafixQualityDenoise) GenerationDefaults.ULTRAFIX_QUALITY_PROMPT else promptField.text
+        val ultrafixLoras = if (isRemote) emptyList() else loraRepository.effective(loraSelections)
         isUltrafixPreparing = true
         generationParamsTmp = GenerationParameters(
             steps = totalSteps,
@@ -893,6 +906,7 @@ fun ModelRunScreen(
             // Record the prompt UltraFix actually ran with (quality tags when
             // the toggle is on), so history reflects what produced the result.
             prompt = ultrafixPrompt,
+            loras = ultrafixLoras,
             negativePrompt = negativePromptField.text,
             generationTime = "",
             width = bmp.width,
@@ -903,6 +917,14 @@ fun ModelRunScreen(
             scheduler = scheduler,
         )
         batchGenerationJob = coroutineScope.launch {
+            try {
+                if (!isRemote) model?.let { LoraRuntime.select(context, it, currentWidth, currentHeight, ultrafixLoras) }
+            } catch (failure: Exception) {
+                isUltrafixPreparing = false
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                errorMessage = failure.message
+                return@launch
+            }
             // The progress card lives on the prompt page; bring it into view.
             try {
                 pagerState.animateScrollToPage(0)
@@ -927,6 +949,7 @@ fun ModelRunScreen(
                     putExtra("denoise_strength", ultrafixDenoiseStrength)
                     putExtra("scheduler", scheduler)
                     putExtra("ultrafix", true)
+                    if (ultrafixLoras.isNotEmpty()) putExtra("loras", LoraRepository.encode(ultrafixLoras))
                     putExtra("ultrafix_tile_size", tileSize)
                     putExtra("backend_host", backendHost)
                 }
@@ -1564,6 +1587,7 @@ fun ModelRunScreen(
                         useOpenCL = generationParamsTmp.useOpenCL,
                         scheduler = generationParamsTmp.scheduler,
                         mode = currentGenerationMode,
+                        loras = generationParamsTmp.loras,
                     )
 
                     // Save to disk and update history list. The saved item's id is
@@ -1812,6 +1836,14 @@ fun ModelRunScreen(
 
     fun startGeneration() {
         focusManager.clearFocus()
+        if (!isRemote) {
+            try {
+                loraRepository.validate(loraSelections)
+            } catch (failure: Exception) {
+                errorMessage = failure.message
+                return
+            }
+        }
         pendingUltrafix = false
         Log.d(
             "ModelRunScreen",
@@ -1830,6 +1862,7 @@ fun ModelRunScreen(
             denoiseStrength = denoiseStrength,
             useOpenCL = useOpenCL,
             scheduler = scheduler,
+            loras = if (isRemote) emptyList() else loraRepository.effective(loraSelections),
         )
 
         Log.d(
@@ -1841,7 +1874,20 @@ fun ModelRunScreen(
         val actualBatchCount =
             if (seed.isNotBlank()) 1 else batchCounts
 
+        val loraSnapshot = if (isRemote) emptyList() else loraRepository.effective(loraSelections)
         batchGenerationJob = coroutineScope.launch {
+            try {
+                if (!isRemote) {
+                    isRunning = true
+                    loraRepository.save(modelId, loraSelections)
+                    model?.let { LoraRuntime.select(context, it, currentWidth, currentHeight, loraSnapshot) }
+                }
+            } catch (failure: Exception) {
+                isRunning = false
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                errorMessage = failure.message
+                return@launch
+            }
             // Freeze the selected reference set for the
             // whole batch and persist it immediately
             // before the first service request. This
@@ -1883,6 +1929,7 @@ fun ModelRunScreen(
                     denoiseStrength = denoiseStrength,
                     useOpenCL = useOpenCL,
                     scheduler = scheduler,
+                    loras = loraSnapshot,
                 )
 
                 val batchIntent = Intent(
@@ -1914,6 +1961,7 @@ fun ModelRunScreen(
                     putExtra("scheduler", scheduler)
                     putExtra("aspect_ratio", aspectRatio)
                     putExtra("batch_index", i)
+                    if (loraSnapshot.isNotEmpty()) putExtra("loras", LoraRepository.encode(loraSnapshot))
                     putExtra("backend_host", backendHost)
                     if (editReferencePayloads.isNotEmpty()) {
                         putExtra("has_reference_images", true)
@@ -2029,6 +2077,7 @@ fun ModelRunScreen(
             useOpenCL = useOpenCL,
             scheduler = scheduler,
             mode = currentMode,
+            loras = if (isRemote) emptyList() else loraRepository.effective(loraSelections),
         )
         shareSourceModelId = modelId
     }
@@ -2257,6 +2306,10 @@ fun ModelRunScreen(
         GenerationWorkspace(
             isSdxl = model?.usesFixedCanvas == true,
             isDit = model?.isDit == true,
+            loras = if (isRemote) emptyList() else loraSelections.filter { it.enabled },
+            onLoraWeightChange = { id, weight ->
+                loraSelections = loraSelections.map { if (it.id == id) it.copy(weight = weight) else it }
+            },
             onDitWidthChange = onDitWidthChange,
             onDitHeightChange = onDitHeightChange,
             aspectLocked = aspectLocked,
@@ -2370,6 +2423,7 @@ fun ModelRunScreen(
                         onImport = ::importWorkspaceParameters,
                         onShare = ::shareWorkspaceParameters,
                         onReset = { showResetConfirmDialog = true },
+                        onLora = if (!isRemote && !isRunning) ({ showLoraSettings = true }) else null,
                         preview = if (intermediateBitmap != null) ({ intermediateBitmap?.let { Image(bitmap = it.asImageBitmap(), contentDescription = "Generation Preview", modifier = Modifier.fillMaxWidth().aspectRatio(1f), contentScale = ContentScale.Fit) } }) else null,
                     )
                 })
@@ -2587,6 +2641,12 @@ fun ModelRunScreen(
                     }
                 }
             }
+        }
+        if (showLoraSettings) {
+            LoraSettingsScreen(modelId, model?.name.orEmpty(), loraSelections, model?.isDit != true, onClose = { showLoraSettings = false }, onApplied = {
+                loraSelections = it
+                showLoraSettings = false
+            })
         }
         AnimatedVisibility(
             visible = showCropScreen && imageUriForCrop != null,
@@ -3223,6 +3283,10 @@ fun ModelRunScreen(
         ReproduceParametersDialog(
             params = params,
             onApply = { selectedFields ->
+                if (!isRemote && ParamShareField.LORAS in selectedFields) {
+                    loraSelections = params.loras
+                    runCatching { loraRepository.validate(params.loras) }.onFailure { errorMessage = it.message }
+                }
                 if (ParamShareField.PROMPT in selectedFields) {
                     promptField.replaceText(params.prompt)
                 }
@@ -3513,6 +3577,10 @@ fun ModelRunScreen(
                 }
             },
             onApply = { selectedFields, clearClipboard ->
+                if (!isRemote && ParamShareField.LORAS in selectedFields) {
+                    imported.loras?.let { loraSelections = it }
+                    runCatching { loraRepository.validate(loraSelections) }.onFailure { errorMessage = it.message }
+                }
                 if (ParamShareField.PROMPT in selectedFields) {
                     imported.prompt?.let { promptField.replaceText(it) }
                 }

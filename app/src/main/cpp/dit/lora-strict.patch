@@ -1,0 +1,39 @@
+--- a/src/pipeline/diffusion_engine.cpp
++++ b/src/pipeline/diffusion_engine.cpp
+@@ -1643,6 +1643,28 @@
+             first_stage_model->set_weight_adapter(multi_lora_adapter);
+         }
+     }
++    // Android's explicit selection is never an optional prompt hint.
++    for (const auto& spec : loras) {
++        bool matched = false;
++        for (const auto& entry : next_models) {
++            if (entry.spec.path != spec.path) continue;
++            for (const auto& named : entry.model->lora_tensors) {
++                const auto& name = named.first;
++                const std::string suffix = ".lora_down";
++                if (!starts_with(name, "lora.") || !ends_with(name, suffix)) continue;
++                auto target = name.substr(5, name.size() - 5 - suffix.size());
++                if (!model_tensor_names.count(target) && (ends_with(target, ".1") || ends_with(target, ".2"))) target.resize(target.size()-2);
++                if (!model_tensor_names.count(target)) {
++                    LOG_ERROR("LoRA target is incompatible with this model: %s", target.c_str());
++                    success = false;
++                } else matched = true;
++            }
++        }
++        if (!matched) {
++            LOG_ERROR("LoRA has no matching model tensors: %s", spec.path.c_str());
++            success = false;
++        }
++    }
+     runtime_lora_models = std::move(next_models);
+     return success;
+ }
+@@ -1662,6 +1684,7 @@
+     for (uint32_t i = 0; i < lora_count; i++) {
+         std::string lora_id = SAFE_STR(loras[i].path);
+         ModelManager::LoraSpec lora_spec;
++        lora_spec.required      = true;
+         lora_spec.path          = lora_id;
+         lora_spec.multiplier    = loras[i].multiplier;
+         lora_spec.is_high_noise = loras[i].is_high_noise;

@@ -101,3 +101,8 @@ Local Dream is built on top of many excellent open-source projects. Sincere than
 - **[xinntao/Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)** - Image upscaling
 - **[Kim2091/UltraSharpV2](https://huggingface.co/Kim2091/UltraSharpV2)** - Image upscaling
 - **[bhky/opennsfw2](https://github.com/bhky/opennsfw2)** - NSFW content filtering
+
+
+### LoRA 开发预览版
+
+`dev-lora.1` 加入最多 3 个 LoRA 的组合加载。在生成页右上角菜单打开 **LoRA**；启用后可在参数下方展开 **LoRA 强度**。未启用时保留原有推理路径。CPU/GPU、NPU 模型需要匹配的 LoRA 兼容包，详见 [LoRA 使用与兼容包说明](tools/lora/README.md)。

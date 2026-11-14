@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.DitResolution
+import io.github.xororz.localdream.data.LoraSelection
 import io.github.xororz.localdream.data.Resolution
 import io.github.xororz.localdream.ui.design.*
 import kotlin.math.roundToInt
@@ -54,6 +55,8 @@ import kotlin.math.roundToInt
 internal fun GenerationWorkspace(
     isSdxl: Boolean,
     isDit: Boolean = false,
+    loras: List<LoraSelection> = emptyList(),
+    onLoraWeightChange: (String, Float) -> Unit = { _, _ -> },
     runOnCpu: Boolean,
     useImg2img: Boolean,
     isRunning: Boolean,
@@ -114,6 +117,7 @@ internal fun GenerationWorkspace(
     val anchors = remember { mutableStateMapOf<String, Rect>() }
     var origin by remember { mutableStateOf(Offset.Zero) }
     var parametersExpanded by rememberSaveable { mutableStateOf(true) }
+    var loraExpanded by rememberSaveable { mutableStateOf(false) }
     var negativeExpanded by rememberSaveable { mutableStateOf(false) }
     val focus = LocalFocusManager.current
     val keyboardVisible = keyboardVisibleOverride ?: keyboardIsVisible()
@@ -145,7 +149,8 @@ internal fun GenerationWorkspace(
     fun finishEdit() {
         focus.clearFocus()
         keyboard?.hide()
-        parametersExpanded = true
+        parametersExpanded = active?.startsWith("lora:") != true
+        if (!parametersExpanded) loraExpanded = true
         closingRequested = true
     }
     BackHandler(enabled = active != null) { finishEdit() }
@@ -190,7 +195,7 @@ internal fun GenerationWorkspace(
                 -start.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()..(Long.MAX_VALUE - start).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             }
 
-            else -> 0..0
+            else -> loras.firstOrNull { "lora:${it.id}" == id }?.let { ticks(it.weight, -2f, 2f, .05f) } ?: (0..0)
         }
     }
     val fields = mutableListOf<WorkspaceParameter>()
@@ -208,7 +213,13 @@ internal fun GenerationWorkspace(
     if (runOnCpu && !isDit) field("runtime", stringResource(R.string.ui_runtime_short), if (useOpenCL) "GPU" else "CPU")
     if (isSdxl && useImg2img) field("aspect", stringResource(R.string.ui_aspect_short), aspectRatio, !isRunning)
 
+    val parameterFields = fields.toList()
+    loras.forEach { field("lora:${it.id}", it.name, "%.2f".format(java.util.Locale.ROOT, it.weight), !isRunning) }
     fun adjust(id: String, ticks: Int) {
+        loras.firstOrNull { "lora:${it.id}" == id }?.let {
+            onLoraWeightChange(it.id, (it.weight + ticks * .05f).coerceIn(-2f, 2f))
+            return
+        }
         when (id) {
             "width" -> when {
                 isDit -> onDitWidthChange((currentWidth + ticks * DIT_SIZE_STEP).toFloat().coerceIn(DIT_MIN_SIZE.toFloat(), DIT_MAX_SIZE.toFloat()))
@@ -318,6 +329,7 @@ internal fun GenerationWorkspace(
             Column(Modifier.fillMaxWidth().testTag("parameter-panel"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Card(onClick = {
                     focus.clearFocus()
+                    loraExpanded = false
                     parametersExpanded = !showParameters
                     if (parametersExpanded) negativeExpanded = false
                 }, modifier = Modifier.fillMaxWidth().testTag("parameter-panel-toggle")) {
@@ -333,7 +345,7 @@ internal fun GenerationWorkspace(
                     exit = shrinkVertically(tween(120)) + fadeOut(tween(90)),
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        fields.chunked(2).forEach { row ->
+                        parameterFields.chunked(2).forEach { row ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (row.first().id == "width" && isDit) 4.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 row.forEachIndexed { index, field ->
                                     val linked = aspectLocked && ((dragging == "width" && field.id == "height") || (dragging == "height" && field.id == "width"))
@@ -418,6 +430,49 @@ internal fun GenerationWorkspace(
                     }
                 }
             }
+            if (loras.isNotEmpty()) {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Card(onClick = {
+                        focus.clearFocus()
+                        loraExpanded = !loraExpanded
+                        if (loraExpanded) {
+                            parametersExpanded = false
+                            negativeExpanded = false
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("LoRA 强度", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                            Icon(if (loraExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null)
+                        }
+                    }
+                    AnimatedVisibility(loraExpanded && !keyboardVisible && !promptFocused, enter = expandVertically(tween(160)) + fadeIn(tween(130)), exit = shrinkVertically(tween(120)) + fadeOut(tween(90))) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            fields.filter { it.id.startsWith("lora:") }.forEach { field ->
+                                ParameterCell(
+                                    field,
+                                    Modifier.fillMaxWidth().onGloballyPositioned {
+                                        anchors[field.id] = Rect(it.positionInWindow() - origin, Size(it.size.width.toFloat(), it.size.height.toFloat()))
+                                    }.graphicsLayer { alpha = if (active == field.id || dragPreview == field.id) 0f else 1f },
+                                    onAdjust = { adjust(field.id, it) },
+                                    onDragging = {
+                                        dragging = if (it) field.id else null
+                                        if (it) {
+                                            dragPreview = field.id
+                                            dragDistance = 0f
+                                        }
+                                    },
+                                    onDistance = { dragDistance = it },
+                                ) {
+                                    focus.clearFocus()
+                                    active = field.id
+                                    closingRequested = false
+                                    editorOpen = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if (status != null) Text(status, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val selected = fields.firstOrNull { it.id == active }
@@ -431,71 +486,76 @@ internal fun GenerationWorkspace(
                     closingRequested = false
                 },
             ) {
-                when (active) {
-                    "width" -> if (isDit || runOnCpu) {
-                        NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit, commitOnDone = true)
-                    } else {
-                        ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
-                    }
+                if (active?.startsWith("lora:") == true) {
+                    val item = loras.first { "lora:${it.id}" == active }
+                    NumberEditor(item.name, item.weight, -2f..2f, 79, false, { onLoraWeightChange(item.id, it) }, ::finishEdit, commitOnDone = true)
+                } else {
+                    when (active) {
+                        "width" -> if (isDit || runOnCpu) {
+                            NumberEditor(stringResource(R.string.ui_width), currentWidth.toFloat(), if (isDit) DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat() else 128f..512f, if (isDit) DIT_SIZE_STEPS else 5, true, if (isDit) onDitWidthChange else onSizeChange, ::finishEdit, commitOnDone = true)
+                        } else {
+                            ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
+                        }
 
-                    "height" -> if (isDit) {
-                        NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit, commitOnDone = true)
-                    } else {
-                        ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
-                    }
+                        "height" -> if (isDit) {
+                            NumberEditor(stringResource(R.string.ui_height), currentHeight.toFloat(), DIT_MIN_SIZE.toFloat()..DIT_MAX_SIZE.toFloat(), DIT_SIZE_STEPS, true, onDitHeightChange, ::finishEdit, commitOnDone = true)
+                        } else {
+                            ResolutionEditor(availableResolutions, onResolutionSelected, ::finishEdit)
+                        }
 
-                    "steps" -> NumberEditor(stringResource(R.string.ui_steps), steps, 1f..50f, 48, true, onStepsChange, ::finishEdit)
+                        "steps" -> NumberEditor(stringResource(R.string.ui_steps), steps, 1f..50f, 48, true, onStepsChange, ::finishEdit)
 
-                    "cfg" -> NumberEditor("CFG", cfg, 1f..30f, 57, false, onCfgChange, ::finishEdit)
+                        "cfg" -> NumberEditor("CFG", cfg, 1f..30f, 57, false, onCfgChange, ::finishEdit)
 
-                    "batch" -> NumberEditor(stringResource(R.string.ui_batch), batchCounts.toFloat(), 1f..10f, 8, true, onBatchCountsChange, ::finishEdit)
+                        "batch" -> NumberEditor(stringResource(R.string.ui_batch), batchCounts.toFloat(), 1f..10f, 8, true, onBatchCountsChange, ::finishEdit)
 
-                    "denoise" -> NumberEditor(stringResource(R.string.ui_denoise_short), denoiseStrength, 0f..1f, 99, false, onDenoiseStrengthChange, ::finishEdit)
+                        "denoise" -> NumberEditor(stringResource(R.string.ui_denoise_short), denoiseStrength, 0f..1f, 99, false, onDenoiseStrengthChange, ::finishEdit)
 
-                    "seed" -> SeedEditor(seed, returnedSeed, onSeedChange, onUseLastSeed, ::finishEdit)
+                        "seed" -> SeedEditor(seed, returnedSeed, onSeedChange, onUseLastSeed, ::finishEdit)
 
-                    "scheduler" -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val karras = scheduler.endsWith("_karras")
-                            listOf("dpm" to "DPM 2M", "dpm_sde" to "DPM SDE", "euler_a" to "Euler A", "euler" to "Euler", "lcm" to "LCM").forEach { (id, label) ->
-                                ParameterChoice(label, scheduler.removeSuffix("_karras") == id, onClick = {
-                                    onSchedulerChange(if (karras && id != "lcm") "${id}_karras" else id)
-                                })
+                        "scheduler" -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                val karras = scheduler.endsWith("_karras")
+                                listOf("dpm" to "DPM 2M", "dpm_sde" to "DPM SDE", "euler_a" to "Euler A", "euler" to "Euler", "lcm" to "LCM").forEach { (id, label) ->
+                                    ParameterChoice(label, scheduler.removeSuffix("_karras") == id, onClick = {
+                                        onSchedulerChange(if (karras && id != "lcm") "${id}_karras" else id)
+                                    })
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("Karras", style = MaterialTheme.typography.labelLarge)
+                                val base = scheduler.removeSuffix("_karras")
+                                Switch(scheduler.endsWith("_karras"), { onSchedulerChange(if (it) "${base}_karras" else base) }, enabled = base != "lcm")
                             }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Karras", style = MaterialTheme.typography.labelLarge)
-                            val base = scheduler.removeSuffix("_karras")
-                            Switch(scheduler.endsWith("_karras"), { onSchedulerChange(if (it) "${base}_karras" else base) }, enabled = base != "lcm")
-                        }
-                    }
 
-                    "runtime" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ParameterChoice("CPU", !useOpenCL, onClick = {
-                            onCpuSelected()
-                            finishEdit()
-                        })
-                        ParameterChoice("GPU", useOpenCL, onClick = {
-                            onGpuSelected()
-                            finishEdit()
-                        })
-                    }
-
-                    "aspect" -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("1:1", "3:4", "4:3").forEach { ratio ->
-                            ParameterChoice(ratio, aspectRatio == ratio, onClick = {
-                                onAspectRatioSelected(ratio)
+                        "runtime" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ParameterChoice("CPU", !useOpenCL, onClick = {
+                                onCpuSelected()
+                                finishEdit()
+                            })
+                            ParameterChoice("GPU", useOpenCL, onClick = {
+                                onGpuSelected()
                                 finishEdit()
                             })
                         }
-                        ParameterChoice(stringResource(R.string.ui_custom), false, onClick = {
-                            onCustomAspectRatioClick()
-                            finishEdit()
-                        })
+
+                        "aspect" -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("1:1", "3:4", "4:3").forEach { ratio ->
+                                ParameterChoice(ratio, aspectRatio == ratio, onClick = {
+                                    onAspectRatioSelected(ratio)
+                                    finishEdit()
+                                })
+                            }
+                            ParameterChoice(stringResource(R.string.ui_custom), false, onClick = {
+                                onCustomAspectRatioClick()
+                                finishEdit()
+                            })
+                        }
                     }
                 }
 
-                if (active !in listOf("width", "height", "steps", "cfg", "batch", "denoise", "seed")) {
+                if (active?.startsWith("lora:") != true && active !in listOf("width", "height", "steps", "cfg", "batch", "denoise", "seed")) {
                     Button(onClick = ::finishEdit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.confirm)) }
                 }
             }
@@ -556,7 +616,7 @@ private fun ParameterCell(field: WorkspaceParameter, modifier: Modifier, onAdjus
         },
     ) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(field.label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            Text(field.label, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(field.value, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.End)
         }
     }

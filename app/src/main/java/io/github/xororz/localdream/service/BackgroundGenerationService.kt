@@ -249,6 +249,7 @@ class BackgroundGenerationService : Service() {
                 ultrafix,
                 ultrafixTileSize,
                 backendHost,
+                intent?.getStringExtra("loras"),
             )
         }
 
@@ -276,6 +277,7 @@ class BackgroundGenerationService : Service() {
         ultrafix: Boolean,
         ultrafixTileSize: Int,
         backendHost: String,
+        loras: String? = null,
     ) = withContext(Dispatchers.IO) {
         // Set once the complete event is fully handled; a socket teardown
         // racing the service shutdown after that point is not an error.
@@ -289,6 +291,7 @@ class BackgroundGenerationService : Service() {
             val showStride = preferences.getInt("show_diffusion_stride", 1)
 
             val jsonObject = JSONObject().apply {
+                if (loras != null) put("loras", JSONArray(loras))
                 put("prompt", prompt)
                 put("negative_prompt", negativePrompt)
                 put("steps", steps)

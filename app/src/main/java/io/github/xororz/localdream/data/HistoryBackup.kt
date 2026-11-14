@@ -218,6 +218,7 @@ object HistoryBackup {
         put("negativePrompt", e.negativePrompt)
         e.generationTime?.let { put("generationTime", it) }
         put("scheduler", e.scheduler)
+        put("loras", org.json.JSONArray(e.lorasJson))
         put("runOnCpu", e.runOnCpu)
         put("useOpenCL", e.useOpenCL)
         put("favorite", e.favorite)
@@ -248,6 +249,7 @@ object HistoryBackup {
             negativePrompt = json.optString("negativePrompt", ""),
             generationTime = json.optString("generationTime").ifEmpty { null },
             scheduler = json.optString("scheduler", "dpm"),
+            lorasJson = json.optJSONArray("loras")?.toString() ?: "[]",
             runOnCpu = json.optBoolean("runOnCpu", false),
             useOpenCL = json.optBoolean("useOpenCL", false),
             favorite = json.optBoolean("favorite", false),

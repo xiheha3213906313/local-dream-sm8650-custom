@@ -35,6 +35,7 @@ function(apply_local_patch patch_file work_dir)
 endfunction()
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/stable-diffusion.cpp.patch" "${SDCPP_DIR}")
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/qwen21-segmentation.patch" "${SDCPP_DIR}")
+apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/lora-strict.patch" "${SDCPP_DIR}")
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/ggml.patch" "${SDCPP_DIR}/ggml")
 apply_local_patch("${CMAKE_CURRENT_SOURCE_DIR}/ggml-v75-fp8.patch" "${SDCPP_DIR}/ggml")
 
@@ -89,3 +90,11 @@ target_include_directories(dit_diagnostic PRIVATE "${SDCPP_DIR}/ggml/include" "$
 target_link_libraries(dit_diagnostic PRIVATE ggml ggml-hexagon log)
 target_link_options(dit_diagnostic PRIVATE "-Wl,-s")
 set_target_properties(dit_diagnostic PROPERTIES OUTPUT_NAME libdit_diagnostic.so RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/${CMAKE_ANDROID_ARCH_ABI}")
+
+# Additive target: never stage this output over libdit_engine.so.
+add_library(dit_lora_engine SHARED DitEngine.cpp)
+target_include_directories(dit_lora_engine PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../include" "${SDCPP_DIR}/include" "${SDCPP_DIR}/src")
+target_compile_definitions(dit_lora_engine PRIVATE LOCAL_DREAM_LORA=1)
+target_link_libraries(dit_lora_engine PRIVATE stable-diffusion log)
+target_compile_options(dit_lora_engine PRIVATE -fvisibility=hidden)
+target_link_options(dit_lora_engine PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/dit_lora_engine.map" "-Wl,-s")

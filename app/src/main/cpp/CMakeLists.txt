@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.18)
-project(libstable_diffusion_core.so C CXX)
+option(LOCAL_DREAM_LORA "Build the independent opt-in LoRA core" OFF)
+if(LOCAL_DREAM_LORA)
+  project(libstable_diffusion_lora_core.so C CXX)
+  add_compile_definitions(LOCAL_DREAM_LORA=1)
+else()
+  project(libstable_diffusion_core.so C CXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

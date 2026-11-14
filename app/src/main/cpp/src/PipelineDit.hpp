@@ -8,7 +8,12 @@
 #include <string>
 #include <vector>
 
+#ifdef LOCAL_DREAM_LORA
+#include "LoraDitEngine.h"
+#include "LoraSupport.hpp"
+#else
 #include "DitEngine.h"
+#endif
 #include "Pipeline.hpp"
 
 // Z-Image Turbo, FLUX.2/Klein and Qwen Image 2.1, run by libdit_engine.so.
@@ -167,6 +172,11 @@ class PipelineDit : public Pipeline {
     }
 
     dit_gen_params params{};
+#ifdef LOCAL_DREAM_LORA
+    std::vector<dit_lora_spec> lora_specs;
+    for(const auto& source:lora::sources) lora_specs.push_back({source.path.c_str(),source.weight});
+    params.loras=lora_specs.data();params.lora_count=lora_specs.size();
+#endif
     params.prompt = req.prompt.c_str();
     params.negative_prompt = req.negative_prompt.c_str();
     params.width = req.width;

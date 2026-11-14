@@ -5,9 +5,14 @@
 // the boundary, so the core never includes their headers and never links their
 // objects. See include/DitEngine.h for the contract.
 
+#ifdef LOCAL_DREAM_LORA
+#include "LoraDitEngine.h"
+#else
 #include "DitEngine.h"
+#endif
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <exception>
@@ -170,6 +175,9 @@ dit_ctx *engine_create(const dit_ctx_params *params) {
   sd_params.llm_path = params->llm_path;
   sd_params.llm_vision_path = params->llm_vision_path;
   sd_params.vae_path = params->vae_path;
+#ifdef LOCAL_DREAM_LORA
+  sd_params.lora_apply_mode = LORA_APPLY_AT_RUNTIME;
+#endif
   sd_params.n_threads = params->n_threads > 0 ? params->n_threads : 4;
   sd_params.flash_attn = params->flash_attn;
   sd_params.diffusion_flash_attn = params->flash_attn;
@@ -329,6 +337,15 @@ bool engine_generate(dit_ctx *ctx, const dit_gen_params *params, dit_progress_cb
     sd_set_preview_callback(nullptr, PREVIEW_NONE, 0, false, false, nullptr);
   }
 
+#ifdef LOCAL_DREAM_LORA
+  if (params->lora_count < 1 || params->lora_count > 3 || !params->loras) { ctx->last_error = "LoRA engine requires 1 to 3 LoRAs"; return false; }
+  std::vector<sd_lora_t> loras;
+  for (int i=0;i<params->lora_count;++i) {
+    if (!params->loras[i].path || !std::isfinite(params->loras[i].weight) || std::abs(params->loras[i].weight)>2) { ctx->last_error="Invalid LoRA parameters";return false; }
+    loras.push_back({false,params->loras[i].weight,params->loras[i].path});
+  }
+  gen.loras=loras.data();gen.lora_count=loras.size();
+#endif
   sd_image_t *images = nullptr;
   int image_count = 0;
   sd::experimental_trace::reset();
@@ -421,8 +438,12 @@ const dit_engine_api g_api = {
 
 }  // namespace
 
-extern "C" __attribute__((visibility("default"))) const dit_engine_api *dit_engine_get_api(
-    int requested_abi_version) {
+#ifdef LOCAL_DREAM_LORA
+#define LOCAL_DREAM_ENGINE_ENTRY dit_lora_engine_get_api
+#else
+#define LOCAL_DREAM_ENGINE_ENTRY dit_engine_get_api
+#endif
+extern "C" __attribute__((visibility("default"))) const dit_engine_api *LOCAL_DREAM_ENGINE_ENTRY(int requested_abi_version) {
   if (requested_abi_version != DIT_ENGINE_ABI_VERSION) return nullptr;
   return &g_api;
 }

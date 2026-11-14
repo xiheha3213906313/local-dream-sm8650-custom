@@ -55,6 +55,7 @@ data class HistoryItem(
                     denoiseStrength = e.denoiseStrength ?: 0.6f,
                     useOpenCL = e.useOpenCL,
                     scheduler = e.scheduler,
+                    loras = LoraRepository.decode(e.lorasJson),
                     mode = mode,
                 ),
             )
@@ -128,6 +129,7 @@ class HistoryManager(private val context: Context) {
                 negativePrompt = params.negativePrompt,
                 generationTime = params.generationTime,
                 scheduler = params.scheduler,
+                lorasJson = LoraRepository.encode(params.loras),
                 runOnCpu = params.runOnCpu,
                 useOpenCL = params.useOpenCL,
             )

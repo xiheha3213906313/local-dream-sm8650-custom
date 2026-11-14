@@ -14,6 +14,7 @@ enum class ParamShareField {
     SCHEDULER,
     DENOISE_STRENGTH,
     MODE,
+    LORAS,
 }
 
 data class ImportedParams(
@@ -25,6 +26,7 @@ data class ImportedParams(
     val scheduler: String? = null,
     val denoiseStrength: Float? = null,
     val mode: GenerationMode? = null,
+    val loras: List<io.github.xororz.localdream.data.LoraSelection>? = null,
 ) {
     fun availableFields(): Set<ParamShareField> {
         // Switching mode requires user interaction (tab switching, source image
@@ -38,6 +40,7 @@ data class ImportedParams(
         if (seed != null) set += ParamShareField.SEED
         if (scheduler != null) set += ParamShareField.SCHEDULER
         if (denoiseStrength != null) set += ParamShareField.DENOISE_STRENGTH
+        if (loras != null) set += ParamShareField.LORAS
         return set
     }
 }
@@ -61,6 +64,7 @@ object ParamShare {
         if (ParamShareField.SEED in fields) {
             params.seed?.let { json.put("seed", it) }
         }
+        if (ParamShareField.LORAS in fields) json.put("loras", org.json.JSONArray(io.github.xororz.localdream.data.LoraRepository.encode(params.loras)))
         if (ParamShareField.SCHEDULER in fields) json.put("scheduler", params.scheduler)
         if (ParamShareField.DENOISE_STRENGTH in fields) {
             json.put("denoise_strength", params.denoiseStrength.toDouble())
@@ -96,6 +100,7 @@ object ParamShare {
             val json = JSONObject(jsonStr)
             if (!json.optBoolean(IDENTITY_KEY, false)) return null
             ImportedParams(
+                loras = if (json.has("loras")) io.github.xororz.localdream.data.LoraRepository.decode(json.getJSONArray("loras").toString()) else null,
                 prompt = if (json.has("prompt")) json.optString("prompt") else null,
                 negativePrompt = if (json.has("negative_prompt")) {
                     json.optString("negative_prompt")

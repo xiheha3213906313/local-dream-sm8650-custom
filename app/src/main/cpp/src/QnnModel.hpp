@@ -22,6 +22,11 @@ using namespace qnn::tools::sample_app;
 
 class QnnModel : public QnnSampleApp {
  public:
+#ifdef LOCAL_DREAM_LORA
+  auto& loraInterface() { return m_qnnFunctionPointers.qnnInterface; }
+  Qnn_ContextHandle_t loraContext() { return m_context; }
+  std::string loraBinary() const { return m_cachedBinaryPath; }
+#endif
   Qnn_Tensor_t *inputs = nullptr;
   Qnn_Tensor_t *outputs = nullptr;
   void *m_modelHandle = nullptr;

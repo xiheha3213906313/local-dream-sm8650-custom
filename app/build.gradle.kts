@@ -40,8 +40,8 @@ android {
         minSdk = 28
 //        minSdk = 31
         targetSdk = 36
-        versionCode = 94
-        versionName = "1.0.0"
+        versionCode = 95
+        versionName = "dev-lora.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -193,7 +193,7 @@ dependencies {
 if (sm8650Compat) {
     val verifySm8650Native by tasks.registering {
         doLast {
-            listOf("libdit_engine.so", "libdit_diagnostic.so", "libstable_diffusion_core.so").forEach { name ->
+            listOf("libdit_engine.so", "libdit_diagnostic.so", "libstable_diffusion_core.so", "libdit_lora_engine.so", "libstable_diffusion_lora_core.so").forEach { name ->
                 check(file("src/main/jniLibs/arm64-v8a/$name").isFile) {
                     "Missing $name: build dit/build.sh and stage the pinned runtime first"
                 }

@@ -51,6 +51,7 @@ private fun fieldLabel(field: ParamShareField): String = when (field) {
     ParamShareField.SEED -> stringResource(R.string.share_field_seed)
     ParamShareField.SCHEDULER -> stringResource(R.string.scheduler)
     ParamShareField.DENOISE_STRENGTH -> stringResource(R.string.share_field_denoise)
+    ParamShareField.LORAS -> "LoRA"
     ParamShareField.MODE -> stringResource(R.string.share_field_mode)
 }
 
@@ -208,6 +209,7 @@ fun ReproduceParametersDialog(
             add(ParamShareField.CFG)
             if (params.seed != null) add(ParamShareField.SEED)
             add(ParamShareField.SCHEDULER)
+            add(ParamShareField.LORAS)
             if (params.mode == GenerationMode.IMG2IMG ||
                 params.mode == GenerationMode.INPAINT ||
                 params.mode == GenerationMode.ULTRAFIX
@@ -249,6 +251,8 @@ fun ReproduceParametersDialog(
 
                         ParamShareField.DENOISE_STRENGTH ->
                             "%.2f".format(params.denoiseStrength)
+
+                        ParamShareField.LORAS -> params.loras.joinToString { "${it.name}: ${it.weight}" }.ifEmpty { "无" }
 
                         ParamShareField.MODE -> null
                     }
@@ -348,6 +352,8 @@ fun ImportParametersDialog(
                         ParamShareField.DENOISE_STRENGTH ->
                             imported.denoiseStrength?.let { "%.2f".format(it) }
 
+                        ParamShareField.LORAS -> imported.loras?.joinToString { "${it.name}: ${it.weight}" }
+
                         ParamShareField.MODE -> imported.mode?.name?.lowercase()
                     }
                     FieldRow(
@@ -414,6 +420,7 @@ fun ShareParamsFlow(
         list += ParamShareField.CFG
         if (source.seed != null) list += ParamShareField.SEED
         list += ParamShareField.SCHEDULER
+        list += ParamShareField.LORAS
         if (source.mode == GenerationMode.IMG2IMG ||
             source.mode == GenerationMode.INPAINT ||
             source.mode == GenerationMode.ULTRAFIX
@@ -440,6 +447,8 @@ fun ShareParamsFlow(
 
                 ParamShareField.DENOISE_STRENGTH ->
                     "%.2f".format(source.denoiseStrength)
+
+                ParamShareField.LORAS -> source.loras.joinToString { "${it.name}: ${it.weight}" }.ifEmpty { "无" }
 
                 ParamShareField.MODE -> source.mode.name.lowercase()
             }

@@ -9,6 +9,8 @@ import io.github.xororz.localdream.BuildConfig
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.DitEngine
 import io.github.xororz.localdream.data.DitResolution
+import io.github.xororz.localdream.data.LoraRepository
+import io.github.xororz.localdream.data.LoraRuntime
 import io.github.xororz.localdream.data.Model
 import io.github.xororz.localdream.data.ModelStorage
 import io.github.xororz.localdream.utils.Sm8650Diagnostics
@@ -127,6 +129,8 @@ class BackendService : Service() {
             val _servingResolution = MutableStateFlow<Pair<Int, Int>?>(null)
         }
 
+        val servingLoraConfig = MutableStateFlow("[]")
+
         val backendState: StateFlow<BackendState> = StateHolder._backendState
 
         val servingModelId: StateFlow<String?> = StateHolder._servingModelId
@@ -138,6 +142,7 @@ class BackendService : Service() {
         }
 
         private fun updateServing(config: BackendConfig?) {
+            servingLoraConfig.value = config?.loraConfig ?: "[]"
             StateHolder._servingModelId.value = config?.modelId
             StateHolder._servingResolution.value = config?.let { Pair(it.width, it.height) }
         }
@@ -169,6 +174,7 @@ class BackendService : Service() {
         val listenOnAll: Boolean,
         // Include decode selection so re-entry cannot reuse the other VAE backend.
         val sm8650CpuVae: Boolean,
+        val loraConfig: String = "[]",
     )
 
     override fun onCreate() {
@@ -239,7 +245,7 @@ class BackendService : Service() {
         val cpuVae = isDitBackend(backendType) && DitEngine.isSm8650Device() &&
             getSharedPreferences("app_prefs", MODE_PRIVATE)
                 .getBoolean(DitEngine.SM8650_CPU_VAE_KEY, DitEngine.SM8650_CPU_VAE_DEFAULT)
-        return BackendConfig(modelId, backendType, width, height, listenOnAll, cpuVae)
+        return BackendConfig(modelId, backendType, width, height, listenOnAll, cpuVae, LoraRepository.encode(LoraRepository.get(this).effective(LoraRepository.decode(intent.getStringExtra("lora_config") ?: "[]"))))
     }
 
     // Declares the desired backend and converges to it. Cancels any pending
@@ -496,7 +502,7 @@ class BackendService : Service() {
             val nativeDir = applicationInfo.nativeLibraryDir
             val modelsDir = File(Model.getModelsDir(this), modelId)
 
-            val executableFile = File(nativeDir, EXECUTABLE_NAME)
+            val executableFile = File(nativeDir, if (config.loraConfig == "[]") EXECUTABLE_NAME else LoraRuntime.CORE_LIB)
 
             if (!executableFile.exists()) {
                 Log.e(TAG, "error: executable does not exist: ${executableFile.absolutePath}")
@@ -532,6 +538,12 @@ class BackendService : Service() {
                     "--port",
                     "8081",
                 )
+            }
+            if (config.loraConfig != "[]") {
+                val loraRoot = LoraRepository.get(this).directory
+                val invocation = File(loraRoot, "active.json")
+                invocation.writeText(config.loraConfig)
+                command += listOf("--lora-config", invocation.absolutePath, "--lora-dir", loraRoot.absolutePath, "--lora-cache", File(cacheDir, "lora").absolutePath, "--lora-width", config.width.toString(), "--lora-height", config.height.toString())
             }
             if (isDitBackend(backendType) && DitEngine.isSm8650Device()) {
                 check(!Sm8650Diagnostics.isRunning) { "SM8650 diagnostics are running" }
@@ -705,11 +717,13 @@ class BackendService : Service() {
 
     private fun startMonitorThread(proc: Process) {
         Thread {
+            var loraError: String? = null
             val exitCode = try {
                 proc.inputStream.bufferedReader().use { reader ->
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
                         Log.i(TAG, "Backend: $line")
+                        if (line?.startsWith("LORA_ERROR: ") == true) loraError = line?.removePrefix("LORA_ERROR: ")
                     }
                 }
                 proc.waitFor()
@@ -727,7 +741,7 @@ class BackendService : Service() {
             if (isLiveCrash(proc)) {
                 updateState(
                     BackendState.Error(
-                        "Backend process exited with code: $exitCode",
+                        loraError ?: "Backend process exited with code: $exitCode",
                         servingModelId.value,
                     ),
                 )

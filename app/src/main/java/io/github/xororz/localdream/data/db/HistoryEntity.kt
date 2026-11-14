@@ -40,4 +40,5 @@ data class HistoryEntity(
 
     @ColumnInfo(defaultValue = "0")
     val favorite: Boolean = false,
+    @ColumnInfo(defaultValue = "'[]'") val lorasJson: String = "[]",
 )

@@ -11,6 +11,9 @@
 #include "Config.hpp"
 #include "MnnUtils.hpp"
 #include "Pipeline.hpp"
+#ifdef LOCAL_DREAM_LORA
+#include "LoraPackage.hpp"
+#endif
 #include "PipelineAnima.hpp"
 #include "PipelineDit.hpp"
 #include "PipelineSd15Cpu.hpp"
@@ -387,7 +390,13 @@ static std::unique_ptr<Pipeline> createPipeline(const ServerOptions &opts,
       showHelpAndExit("File not found: " + llm_vision_path);
     if (opts.lib_dir.empty()) showHelpAndExit("Missing --lib_dir for DiT");
     const std::string engine_path =
-        (std::filesystem::path(opts.lib_dir) / "libdit_engine.so").string();
+        (std::filesystem::path(opts.lib_dir) /
+#ifdef LOCAL_DREAM_LORA
+         "libdit_lora_engine.so"
+#else
+         "libdit_engine.so"
+#endif
+        ).string();
     if (!std::filesystem::exists(engine_path))
       showHelpAndExit("DiT engine not installed: " + engine_path);
     const dit_model_kind kind =
@@ -508,6 +517,9 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline) {
                                    httplib::Response &res) {
     try {
       auto json = nlohmann::json::parse(request.body);
+#ifdef LOCAL_DREAM_LORA
+      lora::validateRequest(json);
+#endif
       auto req = std::make_shared<GenerationRequest>(parseGenerationRequest(
           json, pipeline->isSdxl(), pipeline->isAnima(),
           pipeline->supportsImg2Img(), pipeline->supportsReferenceEditing(),
@@ -813,12 +825,29 @@ static void registerTokenizeEndpoint(httplib::Server &svr,
   });
 }
 
+#ifdef LOCAL_DREAM_LORA
+int loraMain(int argc, char **argv) {
+#else
 int main(int argc, char **argv) {
+#endif
   if (!qnn::log::initializeLogging()) {
     std::cerr << "ERROR: Init logging failed!\n";
     return EXIT_FAILURE;
   }
+#ifdef LOCAL_DREAM_LORA
+  try { lora::stripArguments(argc,argv); }
+  catch(const std::exception& e) { std::cerr << "LORA_ERROR: " << e.what() << std::endl; return EXIT_FAILURE; }
+#endif
   ServerOptions opts = processCommandLine(argc, argv);
+#ifdef LOCAL_DREAM_LORA
+  if(!opts.convert_mode && !opts.upscaler_mode) {
+    try { opts.model_dir=lora::prepare(opts.model_dir,opts.isDit()); }
+    catch(const std::exception& e) { std::cerr << "LORA_ERROR: " << e.what() << std::endl; return EXIT_FAILURE; }
+    // The compatible context already has the requested resolution. Legacy
+    // compressed byte patches belong to the original model and must not be used.
+    if(!opts.isMnn() && !opts.isDit()) opts.patch_path.clear();
+  }
+#endif
 
   if (opts.convert_mode) {
     runConvertMode(opts);
@@ -952,3 +981,10 @@ int main(int argc, char **argv) {
 
   return EXIT_SUCCESS;
 }
+
+#ifdef LOCAL_DREAM_LORA
+int main(int argc, char **argv) {
+  try { return loraMain(argc,argv); }
+  catch(const std::exception& e) { std::cerr << "LORA_ERROR: " << e.what() << std::endl; return EXIT_FAILURE; }
+}
+#endif

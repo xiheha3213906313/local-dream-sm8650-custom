@@ -33,6 +33,7 @@ internal fun GenerationToolbarMenu(
     onImport: () -> Unit,
     onShare: () -> Unit,
     onReset: () -> Unit,
+    onLora: (() -> Unit)? = null,
     preview: (@Composable () -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -47,6 +48,10 @@ internal fun GenerationToolbarMenu(
                     showPreview = true
                 })
             }
+            DropdownMenuItem(text = { Text("LoRA") }, enabled = onLora != null, onClick = {
+                expanded = false
+                onLora?.invoke()
+            })
             DropdownMenuItem(text = { Text(stringResource(R.string.import_from_clipboard)) }, onClick = {
                 expanded = false
                 onImport()
